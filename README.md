@@ -6,7 +6,7 @@ project: slate
 status: in-progress
 milestone: M0 — foundation
 agent: opencode/minimax-m3.1-flash-free
-updated: 2026-11-10T20:25:00Z
+updated: 2026-11-10T20:40:00Z
 ---
 
 ## Goal
@@ -14,20 +14,22 @@ Build Slate: a personal notes and project-tracker workspace whose dashboard read
 already keep and tells you how far along everything is.
 
 ## Now
-- [ ] Projects dashboard: rollup header, per-project cards, progress bars
 - [ ] `packages/bridge`: folder watcher, atomic writer, git facts
 - [ ] Editor: BlockNote skeleton with the page tree
+- [ ] Project detail view: the full README beside the summary
 
 ## Next
-- [ ] Project detail view: the full README beside the summary, so the numbers can be checked
 - [ ] Auth, workspaces and the API routes (rest of M0)
+- [ ] Spend caps per model, recorded against each job
 
 ## Done
 - [x] Monorepo skeleton: npm workspaces, TypeScript strict, Vitest
 - [x] `packages/shared`: zone grammar, plan schema, status renderer, README reader
 - [x] `packages/db`: Drizzle schema including `agent_jobs`
-- [x] `packages/cli`: `init`, `plan ensure|read|log|check`, `status`, `doctor`
+- [x] `packages/cli`: `new`, `init`, `status`, `plan`, `config`, `models`, `test`, `doctor`
 - [x] `apps/web`: dashboard that reads the projects root and summarises every project
+- [x] **Create projects in the app**: one scaffold implementation, used by the browser and the CLI
+- [x] **OpenRouter**: key stored outside the repository, shown masked, model catalogue, test message
 - [x] Copilot session hook prototyped, then dropped in favour of the repository check
 
 ## Log
@@ -37,6 +39,7 @@ already keep and tells you how far along everything is.
 - 2026-11-10 — web shell verified against the real projects root, 200 OK
 - 2026-11-10 — refocused on the dashboard: plain READMEs are read as well as plan blocks
 - 2026-11-10 — removed the Copilot hook; kept the repository check that protects README prose
+- 2026-11-10 — new projects are created from the app; OpenRouter key wired into Settings
 <!-- slate:plan:end -->
 
 <!-- slate:status:begin project=slate -->
@@ -68,8 +71,8 @@ Full specification: `Documents\Free App Builds\03 Notion Clone\SPEC.md`.
 
 ```
 slate/
-├── apps/web/          Next.js 15 — the dashboard, reads the projects root
-├── packages/shared/   zone grammar, plan schema, status renderer, README reader
+├── apps/web/          Next.js 15 — the dashboard, the settings, the project creation
+├── packages/shared/   zone grammar, plan schema, status renderer, README reader, scaffold, config
 ├── packages/db/       Drizzle schema
 └── packages/cli/      the `slate` command
 ```
@@ -78,10 +81,22 @@ slate/
 
 ```powershell
 npm install
-npm test          # 59 tests
+npm test          # 81 tests
 npm run typecheck
-npm run web       # http://localhost:3000
+npm run web       # http://127.0.0.1:3000
 
 # the same picture in the terminal
 node packages/cli/src/cli.ts status --root "C:\Users\kaede\Documents\projects"
+
+# create a project, from the terminal or from the app
+node packages/cli/src/cli.ts new "Recipe Vault" --description "A searchable box of family recipes"
+
+# models
+node packages/cli/src/cli.ts config set key sk-or-v1-…
+node packages/cli/src/cli.ts config set model anthropic/claude-sonnet-4.5
+node packages/cli/src/cli.ts models
+node packages/cli/src/cli.ts test
 ```
+
+The key is stored in `%LOCALAPPDATA%\Slate\config.json`, outside every repository, and the local
+server binds to `127.0.0.1`.

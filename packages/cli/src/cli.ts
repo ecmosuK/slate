@@ -17,39 +17,28 @@ import { execFileSync } from "node:child_process";
 import { basename, join, resolve } from "node:path";
 
 import {
+  AGENTS_TEMPLATE,
+  POINTER_FILES,
+  POINTER_TEMPLATE,
+  complete,
+  configPath,
   findZone,
   formatPlan,
+  listModels,
   listProjects,
+  maskKey,
+  openRouterKey,
   parsePlan,
   planTemplate,
+  readConfig,
+  scaffoldProject,
   scanZones,
   stripZones,
   summarizePortfolio,
   upsertZone,
+  writeConfig,
   type Plan,
 } from "@slate/shared";
-
-const AGENTS_TEXT = `# Agent instructions
-
-Before any other action, read the \`slate:plan\` block in \`README.md\`.
-
-- If it is missing, run \`slate plan ensure\` or create it from the template, and set \`project:\`
-  to this folder's name.
-- Restate the current milestone and the first unchecked task under \`## Now\` in one line, then work.
-- Edit only inside the \`slate:plan\` markers. Never touch \`slate:status\`, \`slate:requests\`, or
-  any prose outside the blocks.
-- Move finished items from \`## Now\` to \`## Done\`.
-- Append one line to \`## Log\` per meaningful change.
-- Update \`agent\` and \`updated\` on every write.
-`;
-
-const POINTER_TEXT = `# Project instructions
-
-The authoritative instructions for this project live in \`AGENTS.md\`. Read that file.
-
-It describes the Slate plan protocol: the \`slate:plan\` block in \`README.md\` is the contract
-between the agent and the Slate app.
-`;
 
 interface Args {
   command: string[];
@@ -142,6 +131,119 @@ function appendLog(body: string, entry: string, agent: string, updated: string):
   return updatedLines.join("\n");
 }
 
+const DEFAULT_PROJECTS_ROOT = "C:\\Users\\kaede\\Documents\\projects";
+
+function projectsRootOf(args: Args): string {
+  return flagString(
+    args,
+    "root",
+    readConfig().projectsRoot ?? process.env["SLATE_PROJECTS_ROOT"] ?? DEFAULT_PROJECTS_ROOT,
+  );
+}
+
+function commandNew(args: Args): number {
+  const root = projectsRootOf(args);
+  const name = args.command.slice(1).join(" ").trim();
+  const description = flagString(args, "description", "");
+  const git = args.flags["git"] === true;
+
+  try {
+    const result = scaffoldProject(root, { name, description, git });
+    process.stdout.write(`created ${result.folder}\n`);
+    for (const file of result.created) process.stdout.write(`  ${file}\n`);
+    return 0;
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 1;
+  }
+}
+
+function commandConfig(args: Args): number {
+  const [action, key, ...rest] = args.command.slice(1);
+  const value = rest.join(" ");
+  const config = readConfig();
+
+  if (action === "path") {
+    process.stdout.write(`${configPath()}\n`);
+    return 0;
+  }
+
+  if (action === "show") {
+    process.stdout.write(`openrouter key: ${maskKey(config.openrouter.apiKey) ?? "not set"}\n`);
+    process.stdout.write(`default model: ${config.openrouter.defaultModel ?? "not set"}\n`);
+    process.stdout.write(`projects root: ${config.projectsRoot ?? DEFAULT_PROJECTS_ROOT}\n`);
+    process.stdout.write(`settings file: ${configPath()}\n`);
+    return 0;
+  }
+
+  if (action === "set") {
+    if (key === "key") {
+      writeConfig({
+        openrouter: { apiKey: value === "" ? null : value, defaultModel: config.openrouter.defaultModel },
+      });
+      process.stdout.write(`key saved to ${configPath()}\n`);
+      return 0;
+    }
+    if (key === "model") {
+      writeConfig({
+        openrouter: { apiKey: config.openrouter.apiKey, defaultModel: value === "" ? null : value },
+      });
+      process.stdout.write(`default model set to ${value}\n`);
+      return 0;
+    }
+    if (key === "root") {
+      writeConfig({ projectsRoot: value === "" ? null : value });
+      process.stdout.write(`projects root set to ${value}\n`);
+      return 0;
+    }
+    process.stderr.write("usage: slate config set <key|model|root> <value>\n");
+    return 1;
+  }
+
+  process.stderr.write("usage: slate config <show|set|path>\n");
+  return 1;
+}
+
+async function commandModels(args: Args): Promise<number> {
+  try {
+    const models = await listModels();
+    if (args.flags["json"] === true) {
+      process.stdout.write(`${JSON.stringify(models, null, 2)}\n`);
+      return 0;
+    }
+    for (const model of models) {
+      const context = model.contextLength === null ? "" : ` · ${model.contextLength} ctx`;
+      process.stdout.write(`${model.id}${context}\n`);
+    }
+    process.stdout.write(`\n${models.length} models\n`);
+    return 0;
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 1;
+  }
+}
+
+async function commandTest(args: Args): Promise<number> {
+  const config = readConfig();
+  const key = openRouterKey(config);
+  if (key === null) {
+    process.stderr.write("no OpenRouter key is set\n");
+    return 1;
+  }
+  const model = flagString(args, "model", config.openrouter.defaultModel ?? "");
+  if (model === "") {
+    process.stderr.write("no default model is set\n");
+    return 1;
+  }
+  const result = await complete(key, model, flagString(args, "prompt", "Reply with: connected."));
+  if (!result.ok) {
+    process.stderr.write(`${result.error ?? "the model did not answer"}\n`);
+    return 1;
+  }
+  process.stdout.write(`${result.reply}\n`);
+  return 0;
+}
+
 function commandInit(args: Args): number {
   const folder = cwdOf(args);
   mkdirSync(folder, { recursive: true });
@@ -154,18 +256,13 @@ function commandInit(args: Args): number {
   writeFileSync(readme, result.text, "utf8");
 
   const agentsPath = join(folder, "AGENTS.md");
-  if (!existsSync(agentsPath)) writeFileSync(agentsPath, AGENTS_TEXT, "utf8");
+  if (!existsSync(agentsPath)) writeFileSync(agentsPath, AGENTS_TEMPLATE, "utf8");
 
-  const pointerPaths = [
-    join(folder, "CLAUDE.md"),
-    join(folder, "GEMINI.md"),
-    join(folder, ".cursor", "rules", "slate.mdc"),
-    join(folder, ".github", "copilot-instructions.md"),
-  ];
-  for (const path of pointerPaths) {
+  for (const relative of POINTER_FILES) {
+    const path = join(folder, relative);
     if (existsSync(path)) continue;
     mkdirSync(join(path, ".."), { recursive: true });
-    writeFileSync(path, POINTER_TEXT, "utf8");
+    writeFileSync(path, POINTER_TEMPLATE, "utf8");
   }
 
   process.stdout.write(`initialised ${folder}\n`);
@@ -316,11 +413,7 @@ function readBaseReadme(folder: string, ref: string): string | null {
 }
 
 function commandStatus(args: Args): number {
-  const root = flagString(
-    args,
-    "root",
-    process.env["SLATE_PROJECTS_ROOT"] ?? "C:\\Users\\kaede\\Documents\\projects",
-  );
+  const root = projectsRootOf(args);
   const list = listProjects(root);
   const rollup = summarizePortfolio(list);
 
@@ -383,13 +476,21 @@ function commandDoctor(args: Args): number {
   return 1;
 }
 
-function main(argv: string[]): number {
+async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   const [first, second] = args.command;
 
   switch (first) {
+    case "new":
+      return commandNew(args);
     case "init":
       return commandInit(args);
+    case "config":
+      return commandConfig(args);
+    case "models":
+      return await commandModels(args);
+    case "test":
+      return await commandTest(args);
     case "plan":
       switch (second) {
         case "ensure":
@@ -409,9 +510,11 @@ function main(argv: string[]): number {
     case "doctor":
       return commandDoctor(args);
     default:
-      process.stderr.write("usage: slate <init|plan|status|doctor>\n");
+      process.stderr.write("usage: slate <new|init|plan|status|config|models|test|doctor>\n");
       return 1;
   }
 }
 
-process.exitCode = main(process.argv.slice(2));
+void main(process.argv.slice(2)).then((code) => {
+  process.exitCode = code;
+});

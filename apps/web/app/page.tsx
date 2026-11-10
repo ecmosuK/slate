@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { summarizePortfolio } from "@slate/shared";
 
-import { projects, PROJECTS_ROOT } from "../lib/projects";
+import NewProject from "./new-project";
+import { projects, projectsRoot } from "../lib/projects";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +27,22 @@ export default function Home() {
 
   return (
     <main>
-      <h1>Slate</h1>
-      <p className="subtitle">
-        {rollup.projects} project(s) under <code>{PROJECTS_ROOT}</code> · {rollup.withPlan} with a
-        plan block · {rollup.tasksDone} of {rollup.tasksTotal} tasks done
-        {rollup.blocked > 0 ? ` · ${rollup.blocked} blocked` : ""}
-      </p>
+      <div className="topbar">
+        <div>
+          <h1>Slate</h1>
+          <p className="subtitle">
+            {rollup.projects} project(s) under <code>{projectsRoot()}</code> · {rollup.withPlan}{" "}
+            with a plan block · {rollup.tasksDone} of {rollup.tasksTotal} tasks done
+            {rollup.blocked > 0 ? ` · ${rollup.blocked} blocked` : ""}
+          </p>
+        </div>
+        <div className="row">
+          <NewProject />
+          <Link className="button-link" href="/settings">
+            Settings
+          </Link>
+        </div>
+      </div>
 
       {list.length === 0 ? (
         <div className="empty">No projects found in the projects root.</div>
