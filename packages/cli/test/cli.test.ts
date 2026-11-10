@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,6 +91,57 @@ describe("slate plan log", () => {
     const readme = readFileSync(join(folder, "README.md"), "utf8");
     expect(readme).toContain("first thing done");
     expect(readme).toContain("agent: opencode/test");
+  });
+});
+
+describe("slate status", () => {
+  it("summarises every project under the root", () => {
+    const root = makeFolder();
+
+    const alpha = join(root, "alpha");
+    mkdirSync(alpha, { recursive: true });
+    writeFileSync(
+      join(alpha, "README.md"),
+      [
+        "# Alpha",
+        "",
+        "<!-- slate:plan:begin project=alpha version=1 -->",
+        "---",
+        "project: alpha",
+        "status: in-progress",
+        "agent: opencode/test",
+        "updated: 2026-11-10T00:00:00Z",
+        "---",
+        "",
+        "## Now",
+        "- [ ] one",
+        "<!-- slate:plan:end -->",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const beta = join(root, "beta");
+    mkdirSync(beta, { recursive: true });
+    writeFileSync(
+      join(beta, "README.md"),
+      ["# Beta", "", "**Status:** nearly done", "", "- [x] a", "- [ ] b", ""].join("\n"),
+      "utf8",
+    );
+
+    const output = run(["status", "--root", root], root);
+
+    expect(output).toContain("alpha");
+    expect(output).toContain("beta");
+    expect(output).toContain("in-progress");
+    expect(output).toContain("nearly done");
+    expect(output).toContain("2 project(s)");
+    expect(output).toContain("1/3");
+  });
+
+  it("says so when there are no projects", () => {
+    const root = makeFolder();
+    expect(run(["status", "--root", root], root)).toContain("no projects under");
   });
 });
 

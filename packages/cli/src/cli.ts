@@ -19,10 +19,12 @@ import { basename, join, resolve } from "node:path";
 import {
   findZone,
   formatPlan,
+  listProjects,
   parsePlan,
   planTemplate,
   scanZones,
   stripZones,
+  summarizePortfolio,
   upsertZone,
   type Plan,
 } from "@slate/shared";
@@ -313,6 +315,50 @@ function readBaseReadme(folder: string, ref: string): string | null {
   }
 }
 
+function commandStatus(args: Args): number {
+  const root = flagString(
+    args,
+    "root",
+    process.env["SLATE_PROJECTS_ROOT"] ?? "C:\\Users\\kaede\\Documents\\projects",
+  );
+  const list = listProjects(root);
+  const rollup = summarizePortfolio(list);
+
+  if (args.flags["json"] === true) {
+    process.stdout.write(`${JSON.stringify({ root, rollup, projects: list }, null, 2)}\n`);
+    return 0;
+  }
+
+  if (list.length === 0) {
+    process.stdout.write(`no projects under ${root}\n`);
+    return 0;
+  }
+
+  const width = Math.max(...list.map((project) => project.slug.length));
+  for (const project of list) {
+    const name = project.slug.padEnd(width);
+    const status = (project.status ?? "unknown").padEnd(12);
+    const tasks =
+      project.tasks.total === 0
+        ? "  -  "
+        : `${String(project.tasks.done).padStart(2)}/${String(project.tasks.total).padEnd(2)}`;
+    const milestone = project.milestone ?? "";
+    const branch =
+      project.git === null || project.git.branch === null
+        ? ""
+        : ` (${project.git.branch}${project.git.dirty ? " *" : ""})`;
+    process.stdout.write(`${name}  ${status}  ${tasks}  ${milestone}${branch}\n`);
+  }
+
+  process.stdout.write(
+    `\n${rollup.projects} project(s), ${rollup.withPlan} with a plan block, ` +
+      `${rollup.tasksDone}/${rollup.tasksTotal} tasks done` +
+      (rollup.blocked > 0 ? `, ${rollup.blocked} blocked` : "") +
+      "\n",
+  );
+  return 0;
+}
+
 function commandDoctor(args: Args): number {
   const folder = cwdOf(args);
   const problems: string[] = [];
@@ -358,10 +404,12 @@ function main(argv: string[]): number {
           process.stderr.write("usage: slate plan <ensure|read|log|check>\n");
           return 1;
       }
+    case "status":
+      return commandStatus(args);
     case "doctor":
       return commandDoctor(args);
     default:
-      process.stderr.write("usage: slate <init|plan|doctor>\n");
+      process.stderr.write("usage: slate <init|plan|status|doctor>\n");
       return 1;
   }
 }

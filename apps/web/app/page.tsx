@@ -1,62 +1,83 @@
-import { listProjects, PROJECTS_ROOT } from "../lib/projects";
+import { summarizePortfolio } from "@slate/shared";
+
+import { projects, PROJECTS_ROOT } from "../lib/projects";
 
 export const dynamic = "force-dynamic";
 
+function percent(done: number, total: number): number {
+  return total === 0 ? 0 : Math.round((done / total) * 100);
+}
+
+function shortAge(iso: string | null): string {
+  if (iso === null) return "unknown";
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return "unknown";
+  const minutes = Math.round((Date.now() - then) / 60000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
 export default function Home() {
-  const projects = listProjects();
+  const list = projects();
+  const rollup = summarizePortfolio(list);
 
   return (
     <main>
       <h1>Slate</h1>
       <p className="subtitle">
-        Projects under <code>{PROJECTS_ROOT}</code>
+        {rollup.projects} project(s) under <code>{PROJECTS_ROOT}</code> · {rollup.withPlan} with a
+        plan block · {rollup.tasksDone} of {rollup.tasksTotal} tasks done
+        {rollup.blocked > 0 ? ` · ${rollup.blocked} blocked` : ""}
       </p>
 
-      {projects.length === 0 ? (
+      {list.length === 0 ? (
         <div className="empty">No projects found in the projects root.</div>
       ) : (
-        projects.map((project) => {
-          const plan = project.plan;
-          const openRequests = project.requests.filter((request) => !request.done).length;
+        list.map((project) => {
+          const { done, total } = project.tasks;
+          const pct = percent(done, total);
 
           return (
             <article className="card" key={project.slug}>
-              <h2>{project.slug}</h2>
+              <h2>{project.title ?? project.slug}</h2>
+
               <div className="meta">
-                {plan === null ? (
-                  <>
-                    <span className="chip warn">no plan</span>
-                    {project.planError !== null && <span>{project.planError}</span>}
-                  </>
-                ) : (
-                  <>
-                    <span className="chip accent">{plan.status}</span>
-                    {plan.milestone !== undefined && <span className="chip">{plan.milestone}</span>}
-                    <span>
-                      {plan.now.filter((task) => task.done).length}/{plan.now.length} in Now
-                    </span>
-                    <span>{plan.agent}</span>
-                    <span>updated {plan.updated.slice(0, 10)}</span>
-                    {project.staleness !== null && project.staleness !== "fresh" && (
-                      <span className="chip warn">{project.staleness}</span>
-                    )}
-                  </>
+                {project.status !== null && <span className="chip accent">{project.status}</span>}
+                {project.milestone !== null && <span className="chip">{project.milestone}</span>}
+                <span className={project.source === "plan" ? "chip" : "chip warn"}>
+                  {project.source === "plan" ? "plan block" : project.source}
+                </span>
+                {project.updatedAt !== null && <span>updated {shortAge(project.updatedAt)}</span>}
+                {project.git !== null && project.git.branch !== null && (
+                  <span>
+                    <code>{project.git.branch}</code>
+                    {project.git.shortSha !== null && ` ${project.git.shortSha.slice(0, 7)}`}
+                    {project.git.dirty ? " · dirty" : ""}
+                  </span>
                 )}
-                {openRequests > 0 && <span className="chip">{openRequests} request(s)</span>}
               </div>
 
-              {plan !== null && (
+              {total > 0 && (
+                <div className="bar" title={`${done} of ${total} tasks done`}>
+                  <div className="fill" style={{ width: `${pct}%` }} />
+                  <span className="bar-label">
+                    {done}/{total} tasks
+                  </span>
+                </div>
+              )}
+
+              {project.goal !== null && <p className="goal">{project.goal}</p>}
+
+              {project.nextSteps.length > 0 && (
                 <>
-                  {plan.goal !== "" && <p className="goal">{plan.goal}</p>}
-                  {plan.now.length > 0 && (
-                    <ul className="tasks">
-                      {plan.now.map((task) => (
-                        <li className={task.done ? "done" : undefined} key={task.text}>
-                          {task.text}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <p className="label">Next</p>
+                  <ul className="tasks">
+                    {project.nextSteps.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ul>
                 </>
               )}
 

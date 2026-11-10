@@ -18,8 +18,10 @@ Before any other action, read the `slate:plan` block in `README.md`.
 - TypeScript everywhere, strict mode, no build step for the shared package — it ships as source.
 - Relative imports carry the `.ts` extension (`./zones.ts`). Node resolves them directly, so the
   CLI runs on plain Node with no bundler, and `allowImportingTsExtensions` is on.
-- The zone grammar and plan schema live in `packages/shared/src/zones.ts` and
-  `packages/shared/src/plan.ts`. They are the single implementation of the spec; do not fork them.
+- The zone grammar, plan schema and README reader live in `packages/shared/src/`. They are the
+  single implementation of the spec; do not fork them.
+- The reader has two paths: an exact one for the plan block, and an inferred one for ordinary
+  READMEs. Keep them separate. A summary must always say which path produced it.
 - Tests are Vitest, colocated in `packages/*/test`. The CLI tests spawn the real binary.
 - No Docker yet, so nothing that needs Postgres can run. Domain logic stays in `packages/shared`
   precisely so it can be tested without a database.
