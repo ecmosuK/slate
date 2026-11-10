@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "command": "node .github/hooks/slate-plan.cjs",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}

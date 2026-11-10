@@ -1,0 +1,19 @@
+{
+  "name": "@slate/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Zone grammar, plan schema and status renderer shared by the bridge, the CLI and the web app.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  }
+}

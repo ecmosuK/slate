@@ -1,0 +1,25 @@
+{
+  "name": "slate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal notes and project trackers that write project status into READMEs and read agent plans back.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "web": "npm run dev --workspace @slate/web"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
