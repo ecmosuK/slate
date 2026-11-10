@@ -1,0 +1,7 @@
+# Normalise line endings so the diff stays readable across Windows and Linux.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.webp binary
+*.woff binary
+*.woff2 binary
