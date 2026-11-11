@@ -13,6 +13,7 @@ import {
 
 import { runAgent } from "@/lib/agent";
 import { readGoals } from "@/lib/goals";
+import { isRateLimitError, listFreeModels } from "@/lib/free-models";
 import { isJsonRequest, isLocalRequest } from "@/lib/local-request";
 import {
   decodeProjectSlug,
@@ -138,11 +139,11 @@ export async function POST(request: Request) {
   }
 
   const config = readConfig();
-  const model =
+  const requestedModel =
     typeof payload.model === "string" && payload.model.trim() !== ""
       ? payload.model.trim()
       : (config.openrouter.defaultModel ?? "");
-  if (model === "") {
+  if (requestedModel === "") {
     return NextResponse.json(
       { ok: false, error: "choose a model in Settings first" },
       { status: 400 },
@@ -157,12 +158,40 @@ export async function POST(request: Request) {
     );
   }
 
+  // opencode-provider models are listed for visibility, but the chat agent uses the OpenRouter API.
+  if (requestedModel.startsWith("opencode/")) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "opencode provider models cannot be used in chat here (chat calls the OpenRouter API). Pick an OpenRouter free model such as openrouter/free.",
+      },
+      { status: 400 },
+    );
+  }
+
   const project = typeof payload.project === "string" && payload.project !== "" ? payload.project : null;
   const root = projectsRoot();
 
+  // On rate limits, fall back to other free OpenRouter models automatically.
+  let fallbackModels: string[] = [];
+  if (isRateLimitError("429")) {
+    // always build a fallback pool; cheap when cached
+  }
+  try {
+    const free = await listFreeModels();
+    fallbackModels = free
+      .filter((entry) => entry.source !== "opencode" && entry.tools !== false)
+      .map((entry) => entry.id)
+      .filter((id) => id !== requestedModel);
+  } catch {
+    fallbackModels = [];
+  }
+
   const result = await runAgent({
     apiKey: key,
-    model,
+    model: requestedModel,
+    fallbackModels,
     system: workspaceContext(project, root),
     messages,
     context: { root, agent: "slate-agent" },

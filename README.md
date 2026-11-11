@@ -5,8 +5,8 @@
 project: slate
 status: in-progress
 milestone: M0 — foundation
-agent: opencode/deepseek-v4.1-flash-free
-updated: 2026-11-11T12:42:37Z
+agent: opencode/iceman-free
+updated: 2026-11-11T13:15:22Z
 ---
 
 ## Goal
@@ -35,6 +35,7 @@ already keep and tells you how far along everything is.
 - [x] Calendar month view shell (scheduling and Google sync still to come)
 - [x] **Sidebar home button**: jump back to the dashboard from any page
 - [x] **Agent tools**: create projects, edit plan milestones and tasks, add and update goals from chat
+- [x] **Free-only models and fallback**: show OpenRouter/opencode free models and auto-fallback chat on rate limits
 - [x] Copilot session hook prototyped, then dropped in favour of the repository check
 
 ## Log
@@ -52,6 +53,7 @@ already keep and tells you how far along everything is.
 - 2026-11-11 — task runner defaults to OpenRouter’s free router through opencode
 - 2026-11-11 — sidebar home button at the top right, linking back to the dashboard
 - 2026-11-11 — chat agent tools: create projects, edit goal/milestone/status/tasks, add and update goals
+- 2026-11-11 — limited model pickers to free OpenRouter and opencode models, with chat auto-fallback on rate limits
 <!-- slate:plan:end -->
 
 <!-- slate:status:begin project=slate -->

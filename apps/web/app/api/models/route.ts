@@ -1,21 +1,23 @@
 import { NextResponse } from "next/server";
 
-import { complete, listModels, openRouterKey, readConfig } from "@slate/shared";
+import { complete, openRouterKey, readConfig } from "@slate/shared";
+
+import { listFreeModels } from "@/lib/free-models";
 
 export const dynamic = "force-dynamic";
 
-let cache: { models: Awaited<ReturnType<typeof listModels>>; at: number } | null = null;
+let cache: { models: Awaited<ReturnType<typeof listFreeModels>>; at: number } | null = null;
 const CACHE_MS = 10 * 60 * 1000;
 
-/** The model catalogue. The endpoint is public, so this works without a key. */
+/** Free model catalogue: OpenRouter free models and opencode's free models. */
 export async function GET() {
   if (cache !== null && Date.now() - cache.at < CACHE_MS) {
-    return NextResponse.json({ ok: true, models: cache.models, cached: true });
+    return NextResponse.json({ ok: true, models: cache.models, cached: true, freeOnly: true });
   }
   try {
-    const models = await listModels();
+    const models = await listFreeModels();
     cache = { models, at: Date.now() };
-    return NextResponse.json({ ok: true, models, cached: false });
+    return NextResponse.json({ ok: true, models, cached: false, freeOnly: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "the model list could not be fetched";
     return NextResponse.json({ ok: false, error: message }, { status: 502 });

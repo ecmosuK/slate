@@ -18,6 +18,7 @@ import {
   executeAgentTool,
   type AgentToolContext,
 } from "@/lib/agent-tools";
+import { isRateLimitError } from "@/lib/free-models";
 
 const MAX_STEPS = 8;
 
@@ -29,6 +30,8 @@ export interface AgentAction {
 export interface AgentRequest {
   apiKey: string;
   model: string;
+  /** Other OpenRouter model IDs to try if the primary model is rate-limited before any actions run. */
+  fallbackModels?: string[];
   system: string;
   messages: ChatTurn[];
   context: AgentToolContext;
@@ -56,7 +59,10 @@ function plainMessages(system: string, messages: ChatTurn[]): ChatTurn[] {
   ];
 }
 
-export async function runAgent(request: AgentRequest): Promise<AgentResult> {
+async function runWithModel(
+  request: AgentRequest,
+  model: string,
+): Promise<AgentResult> {
   const conversation: AgentMessage[] = [
     { role: "system", content: request.system },
     ...request.messages
@@ -71,7 +77,7 @@ export async function runAgent(request: AgentRequest): Promise<AgentResult> {
   for (let step = 0; step < MAX_STEPS; step += 1) {
     const result = await chatWithTools(
       request.apiKey,
-      request.model,
+      model,
       conversation,
       AGENT_TOOLS,
       request.fetchImpl,
@@ -82,18 +88,29 @@ export async function runAgent(request: AgentRequest): Promise<AgentResult> {
       if (step === 0) {
         const fallback = await chat(
           request.apiKey,
-          request.model,
+          model,
           plainMessages(request.system, request.messages),
           request.fetchImpl,
         );
+        if (fallback.ok) {
+          return {
+            ok: true,
+            reply: fallback.reply,
+            model: fallback.model ?? model,
+            promptTokens: fallback.promptTokens,
+            completionTokens: fallback.completionTokens,
+            actions,
+            error: null,
+          };
+        }
         return {
-          ok: fallback.ok,
-          reply: fallback.reply,
-          model: fallback.model ?? request.model,
+          ok: false,
+          reply: "",
+          model: fallback.model ?? model,
           promptTokens: fallback.promptTokens,
           completionTokens: fallback.completionTokens,
           actions,
-          error: fallback.error,
+          error: fallback.error ?? result.error,
         };
       }
 
@@ -103,7 +120,7 @@ export async function runAgent(request: AgentRequest): Promise<AgentResult> {
           actions.length > 0
             ? `I made some changes, but could not finish: ${result.error ?? "the model stopped responding"}. Check the affected project and try again.`
             : "",
-        model: request.model,
+        model,
         promptTokens: promptTokens === 0 ? null : promptTokens,
         completionTokens: completionTokens === 0 ? null : completionTokens,
         actions,
@@ -119,7 +136,7 @@ export async function runAgent(request: AgentRequest): Promise<AgentResult> {
       return {
         ok: false,
         reply: "",
-        model: result.model ?? request.model,
+        model: result.model ?? model,
         promptTokens: promptTokens === 0 ? null : promptTokens,
         completionTokens: completionTokens === 0 ? null : completionTokens,
         actions,
@@ -134,7 +151,7 @@ export async function runAgent(request: AgentRequest): Promise<AgentResult> {
         return {
           ok: false,
           reply: "",
-          model: result.model ?? request.model,
+          model: result.model ?? model,
           promptTokens: promptTokens === 0 ? null : promptTokens,
           completionTokens: completionTokens === 0 ? null : completionTokens,
           actions,
@@ -145,7 +162,7 @@ export async function runAgent(request: AgentRequest): Promise<AgentResult> {
       return {
         ok: true,
         reply,
-        model: result.model ?? request.model,
+        model: result.model ?? model,
         promptTokens: promptTokens === 0 ? null : promptTokens,
         completionTokens: completionTokens === 0 ? null : completionTokens,
         actions,
@@ -176,10 +193,48 @@ export async function runAgent(request: AgentRequest): Promise<AgentResult> {
       actions.length > 0
         ? `I made some changes, but stopped after ${MAX_STEPS} tool steps. Check the affected project before asking me to continue.`
         : "",
-    model: request.model,
+    model,
     promptTokens: promptTokens === 0 ? null : promptTokens,
     completionTokens: completionTokens === 0 ? null : completionTokens,
     actions,
     error: "the agent used too many tool steps without answering",
   };
+}
+
+export async function runAgent(request: AgentRequest): Promise<AgentResult> {
+  const candidates = [request.model, ...(request.fallbackModels ?? [])].filter(
+    (value, index, all) => value !== "" && all.indexOf(value) === index,
+  );
+  let last: AgentResult | null = null;
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const model = candidates[index];
+    if (model === undefined) continue;
+    const result = await runWithModel(request, model);
+    if (result.ok) {
+      if (index > 0) {
+        const note = `Used fallback model ${model} after a rate limit.`;
+        result.reply = result.reply === "" ? note : `${note}\n\n${result.reply}`;
+      }
+      return result;
+    }
+
+    last = result;
+    // Only fall back when nothing was changed yet and the failure looks like a rate limit.
+    if (result.actions.length > 0 || !isRateLimitError(result.error)) {
+      return result;
+    }
+  }
+
+  return (
+    last ?? {
+      ok: false,
+      reply: "",
+      model: request.model,
+      promptTokens: null,
+      completionTokens: null,
+      actions: [],
+      error: "no model was available",
+    }
+  );
 }

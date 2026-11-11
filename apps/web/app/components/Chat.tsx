@@ -20,6 +20,8 @@ interface Model {
   contextLength: number | null;
   promptPrice: number | null;
   completionPrice: number | null;
+  source?: "openrouter" | "opencode";
+  tools?: boolean | null;
 }
 
 interface Settings {
@@ -35,7 +37,9 @@ interface ChatReply {
   error?: string;
 }
 
-function price(value: number | null): string {
+function priceLabel(model: Model): string {
+  const value = model.promptPrice;
+  if (value === 0 || model.id.endsWith(":free") || model.id === "openrouter/free") return "free";
   if (value === null) return "";
   const perMillion = value * 1_000_000;
   if (perMillion < 0.01) return "$0/M";
@@ -141,13 +145,14 @@ export default function Chat({ project = null }: { project?: string | null }) {
           {models.length === 0 && <option value="">loading models…</option>}
           {models.map((entry) => (
             <option key={entry.id} value={entry.id}>
+              {entry.source === "opencode" ? "[opencode] " : ""}
               {entry.name}
-              {entry.promptPrice !== null ? ` · ${price(entry.promptPrice)}` : ""}
+              {` · ${priceLabel(entry)}`}
             </option>
           ))}
         </select>
         <span className="meta">
-          {project !== null ? `project context: ${project}` : "whole workspace"}
+          {project !== null ? `project context: ${project}` : "whole workspace"} · free models only · auto-fallback on rate limits
         </span>
         <button
           type="button"
@@ -172,8 +177,9 @@ export default function Chat({ project = null }: { project?: string | null }) {
           <div className="chat-empty">
             <p>Ask the agent to create a project, set a milestone, add goals, or plan the next task.</p>
             <p className="meta">
-              The agent can edit README plans and goals.json on this machine. Changes are applied
-              immediately.
+              Free models only. If a model is rate-limited, Slate tries another free OpenRouter model
+              automatically. Chat tools work with OpenRouter models (opencode-provider models are
+              listed for reference).
             </p>
           </div>
         )}

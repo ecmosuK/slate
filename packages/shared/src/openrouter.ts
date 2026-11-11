@@ -17,6 +17,17 @@ export interface OpenRouterModel {
   /** Price per token, in the provider's own units (usually USD per token). */
   promptPrice: number | null;
   completionPrice: number | null;
+  /** Where the model is called from: OpenRouter's API, or opencode's own provider. */
+  source?: "openrouter" | "opencode";
+  /** Whether the model advertises tool/function calling. */
+  tools?: boolean | null;
+}
+
+/** A model is free when it costs nothing to call. */
+export function isFreeModel(model: Pick<OpenRouterModel, "id" | "promptPrice" | "completionPrice">): boolean {
+  if (model.promptPrice === 0 && model.completionPrice === 0) return true;
+  if (model.id === "openrouter/free" || model.id.endsWith(":free")) return true;
+  return false;
 }
 
 export interface CompletionResult {
@@ -29,6 +40,7 @@ export interface CompletionResult {
 }
 
 function price(value: unknown): number | null {
+  if (typeof value === "number") return Number.isNaN(value) ? null : value;
   if (typeof value !== "string") return null;
   const parsed = Number.parseFloat(value);
   return Number.isNaN(parsed) ? null : parsed;
@@ -48,20 +60,24 @@ export async function listModels(
   const rows = Array.isArray(body.data) ? body.data : [];
 
   return rows
-    .map((row) => {
+    .map((row): OpenRouterModel | null => {
       const item = row as {
         id?: unknown;
         name?: unknown;
         context_length?: unknown;
         pricing?: { prompt?: unknown; completion?: unknown };
+        supported_parameters?: unknown;
       };
       if (typeof item.id !== "string") return null;
+      const supported = Array.isArray(item.supported_parameters) ? item.supported_parameters : null;
       return {
         id: item.id,
         name: typeof item.name === "string" ? item.name : item.id,
         contextLength: typeof item.context_length === "number" ? item.context_length : null,
         promptPrice: price(item.pricing?.prompt),
         completionPrice: price(item.pricing?.completion),
+        source: "openrouter",
+        tools: supported === null ? null : supported.includes("tools"),
       };
     })
     .filter((model): model is OpenRouterModel => model !== null)

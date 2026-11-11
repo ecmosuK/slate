@@ -8,6 +8,8 @@ interface Model {
   contextLength: number | null;
   promptPrice: number | null;
   completionPrice: number | null;
+  source?: "openrouter" | "opencode";
+  tools?: boolean | null;
 }
 
 interface Settings {
@@ -18,9 +20,12 @@ interface Settings {
   projectsRoot: string | null;
 }
 
-function price(value: number | null): string {
-  if (value === null) return "";
-  const perMillion = value * 1_000_000;
+function price(entry: Model): string {
+  if (entry.promptPrice === 0 || entry.id.endsWith(":free") || entry.id === "openrouter/free") {
+    return "free";
+  }
+  if (entry.promptPrice === null) return "";
+  const perMillion = entry.promptPrice * 1_000_000;
   if (perMillion < 0.01) return "$0";
   return `$${perMillion.toFixed(perMillion < 1 ? 3 : 2)}/M`;
 }
@@ -96,7 +101,8 @@ export default function SettingsPage() {
     <main>
       <h1>Settings</h1>
       <p className="subtitle">
-        The key is stored on this machine, outside the repository. It is never sent to a browser.
+        One OpenRouter key. Slate shows only free models (OpenRouter and opencode) and falls back to
+        another free model when one is rate-limited. The key stays on this machine.
       </p>
 
       <section className="card">
@@ -129,7 +135,9 @@ export default function SettingsPage() {
             <option value="">choose a model…</option>
             {models.map((entry) => (
               <option key={entry.id} value={entry.id}>
-                {entry.name} · {price(entry.promptPrice)} in / {price(entry.completionPrice)} out
+                {entry.source === "opencode" ? "[opencode] " : ""}
+                {entry.name} · {price(entry)}
+                {entry.tools === false ? " · no tools" : ""}
               </option>
             ))}
           </select>
