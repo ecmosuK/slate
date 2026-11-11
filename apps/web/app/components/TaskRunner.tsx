@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { DEFAULT_JOB_MODEL } from "@/lib/job-defaults";
+
 type JobMode = "plan" | "build";
 type JobStatus = "running" | "succeeded" | "failed" | "cancelled";
 
@@ -65,7 +67,7 @@ export default function TaskRunner({
 }) {
   const [task, setTask] = useState(suggestedTask);
   const [mode, setMode] = useState<JobMode>("build");
-  const [model, setModel] = useState("");
+  const [model, setModel] = useState(DEFAULT_JOB_MODEL);
   const [confirmed, setConfirmed] = useState(false);
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -197,7 +199,8 @@ export default function TaskRunner({
       </div>
 
       <p className="meta">
-        Starts <code>opencode run</code> in <code>{folder}</code> as your Windows user.
+        Starts <code>opencode run</code> in <code>{folder}</code> as your Windows user. The default
+        model is <code>{DEFAULT_JOB_MODEL}</code>, OpenRouter’s free router.
       </p>
       <p className="notice warn">
         This can read and write files and run shell commands with your account. “Plan” mode
@@ -215,11 +218,11 @@ export default function TaskRunner({
           </label>
 
           <label className="field">
-            <span>Model (optional)</span>
+            <span>Model</span>
             <input
               value={model}
               onChange={(event) => setModel(event.target.value)}
-              placeholder="use your opencode default"
+              placeholder={DEFAULT_JOB_MODEL}
             />
           </label>
         </div>

@@ -6,7 +6,7 @@ project: slate
 status: in-progress
 milestone: M0 — foundation
 agent: opencode/deepseek-v4.1-flash-free
-updated: 2026-11-11T03:02:00Z
+updated: 2026-11-11T03:08:00Z
 ---
 
 ## Goal
@@ -47,6 +47,7 @@ already keep and tells you how far along everything is.
 - 2026-11-11 — agent chat over OpenRouter with workspace and project context
 - 2026-11-11 — project sidebar and calendar month view shell
 - 2026-11-11 — opencode task runner: confirmation and local-origin guards, live logs, cancel
+- 2026-11-11 — task runner defaults to OpenRouter’s free router through opencode
 <!-- slate:plan:end -->
 
 <!-- slate:status:begin project=slate -->

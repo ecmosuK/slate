@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { createInterface } from "node:readline";
 
+import { DEFAULT_JOB_MODEL } from "./job-defaults";
 import { projectFolder } from "./projects";
 
 export type JobMode = "plan" | "build";
@@ -296,8 +297,9 @@ export function startJob(input: StartJobInput): JobSummary {
     );
   }
 
-  const model = input.model?.trim() === "" ? null : (input.model?.trim() ?? null);
-  if (model !== null && model.length > 200) throw new JobError("the model name is too long");
+  const requested = input.model?.trim() ?? "";
+  const model = requested === "" ? DEFAULT_JOB_MODEL : requested;
+  if (model.length > 200) throw new JobError("the model name is too long");
 
   const timestamp = new Date().toISOString().slice(0, 16).replace("T", " ");
   const args = [
@@ -309,8 +311,9 @@ export function startJob(input: StartJobInput): JobSummary {
     `Slate · ${project} · ${timestamp}`,
     "--agent",
     input.mode === "plan" ? "plan" : "build",
+    "--model",
+    model,
   ];
-  if (model !== null) args.push("--model", model);
   args.push(task);
 
   const now = new Date().toISOString();
