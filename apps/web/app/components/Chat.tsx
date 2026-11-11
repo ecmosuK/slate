@@ -6,6 +6,12 @@ import { useEffect, useRef, useState } from "react";
 interface Message {
   role: "user" | "assistant";
   content: string;
+  actions?: AgentAction[];
+}
+
+interface AgentAction {
+  ok: boolean;
+  summary: string;
 }
 
 interface Model {
@@ -25,6 +31,7 @@ interface ChatReply {
   ok: boolean;
   reply?: string;
   model?: string;
+  actions?: AgentAction[];
   error?: string;
 }
 
@@ -98,7 +105,7 @@ export default function Chat({ project = null }: { project?: string | null }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model,
-          messages: nextMessages,
+          messages: nextMessages.map(({ role, content }) => ({ role, content })),
           project,
         }),
       });
@@ -106,7 +113,14 @@ export default function Chat({ project = null }: { project?: string | null }) {
       if (!response.ok || !body.ok) {
         throw new Error(body.error ?? `The agent returned ${response.status}`);
       }
-      setMessages([...nextMessages, { role: "assistant", content: body.reply ?? "" }]);
+      setMessages([
+        ...nextMessages,
+        {
+          role: "assistant",
+          content: body.reply ?? "",
+          actions: body.actions ?? [],
+        },
+      ]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
       // Leave the user's message visible so they can retry.
@@ -156,10 +170,10 @@ export default function Chat({ project = null }: { project?: string | null }) {
       <div className="chat-messages">
         {messages.length === 0 && !loading && (
           <div className="chat-empty">
-            <p>Ask about a project, a next step, or what to do first.</p>
+            <p>Ask the agent to create a project, set a milestone, add goals, or plan the next task.</p>
             <p className="meta">
-              The agent can read the workspace and the selected project&apos;s README. It cannot
-              write files from chat yet.
+              The agent can edit README plans and goals.json on this machine. Changes are applied
+              immediately.
             </p>
           </div>
         )}
@@ -167,6 +181,18 @@ export default function Chat({ project = null }: { project?: string | null }) {
           <div className={`chat-message ${message.role}`} key={`${message.role}-${index}`}>
             <div className="chat-role">{message.role === "user" ? "You" : "Slate"}</div>
             <div className="chat-content">{message.content}</div>
+            {message.actions !== undefined && message.actions.length > 0 && (
+              <ul className="chat-actions">
+                {message.actions.map((action, actionIndex) => (
+                  <li
+                    className={action.ok ? "ok" : "bad"}
+                    key={`${action.summary}-${actionIndex}`}
+                  >
+                    {action.summary}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         ))}
         {loading && (

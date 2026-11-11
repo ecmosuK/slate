@@ -8,10 +8,11 @@ export default defineConfig({
     alias: {
       "@slate/shared": r("./packages/shared/src/index.ts"),
       "@slate/db": r("./packages/db/src/index.ts"),
+      "@": r("./apps/web"),
     },
   },
   test: {
-    include: ["packages/*/test/**/*.test.ts"],
+    include: ["packages/*/test/**/*.test.ts", "apps/web/test/**/*.test.ts"],
     environment: "node",
   },
 });

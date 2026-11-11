@@ -541,6 +541,32 @@ a.card:focus-visible {
   word-break: break-word;
 }
 
+.chat-actions {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.chat-actions li {
+  margin: 3px 0;
+  padding-left: 16px;
+  position: relative;
+}
+
+.chat-actions li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+}
+
+.chat-actions li.bad::before {
+  content: "✕";
+  color: var(--warn);
+}
+
 .chat-form {
   display: flex;
   flex-direction: column;

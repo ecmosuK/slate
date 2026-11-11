@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { complete, listModels, type OpenRouterModel } from "@slate/shared";
+import { complete, chatWithTools, listModels, type OpenRouterModel } from "@slate/shared";
 
 function fakeResponse(body: unknown, ok = true, status = 200): Response {
   return {
@@ -76,5 +76,101 @@ describe("complete", () => {
     const result = await complete("sk-or-v1-test", "vendor/model", "hello", fetchImpl);
     expect(result.ok).toBe(false);
     expect(result.error).toContain("offline");
+  });
+});
+
+describe("chatWithTools", () => {
+  it("returns a tool call with parsed arguments", async () => {
+    const fetchImpl = (async () =>
+      fakeResponse({
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "call_1",
+                  type: "function",
+                  function: {
+                    name: "update_plan",
+                    arguments: '{"project":"demo","milestone":"M1"}',
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+        usage: { prompt_tokens: 30, completion_tokens: 8 },
+      })) as unknown as typeof fetch;
+
+    const result = await chatWithTools(
+      "sk-or-v1-test",
+      "vendor/model",
+      [{ role: "user", content: "set the milestone" }],
+      [
+        {
+          type: "function",
+          function: {
+            name: "update_plan",
+            description: "update a plan",
+            parameters: { type: "object", properties: {} },
+          },
+        },
+      ],
+      fetchImpl,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.finishReason).toBe("tool_calls");
+    expect(result.promptTokens).toBe(30);
+    expect(result.message?.tool_calls).toHaveLength(1);
+    expect(result.message?.tool_calls?.[0]?.function.name).toBe("update_plan");
+    expect(JSON.parse(result.message?.tool_calls?.[0]?.function.arguments ?? "{}")).toEqual({
+      project: "demo",
+      milestone: "M1",
+    });
+  });
+
+  it("survives a malformed tool call", async () => {
+    const fetchImpl = (async () =>
+      fakeResponse({
+        choices: [
+          {
+            message: {
+              content: "no tools for this one",
+              tool_calls: [{ id: "", function: { name: "" } }],
+            },
+            finish_reason: "stop",
+          },
+        ],
+      })) as unknown as typeof fetch;
+
+    const result = await chatWithTools(
+      "sk-or-v1-test",
+      "vendor/model",
+      [{ role: "user", content: "hello" }],
+      [],
+      fetchImpl,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.message?.tool_calls).toBeUndefined();
+    expect(result.message?.content).toBe("no tools for this one");
+  });
+
+  it("reports an OpenRouter error", async () => {
+    const fetchImpl = (async () =>
+      fakeResponse({ error: "no such model" }, false, 404)) as unknown as typeof fetch;
+    const result = await chatWithTools(
+      "sk-or-v1-test",
+      "vendor/model",
+      [{ role: "user", content: "hello" }],
+      [],
+      fetchImpl,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("404");
   });
 });
