@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { readProject, type PlanTask } from "@slate/shared";
 
 import Goals from "@/app/components/Goals";
+import TaskRunner from "@/app/components/TaskRunner";
 import { decodeProjectSlug, projectFolder } from "@/lib/projects";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,15 @@ function TaskSection({ title, tasks }: { title: string; tasks: PlanTask[] }) {
       <TaskList tasks={tasks} />
     </div>
   );
+}
+
+/** Prefer the first task that is actually open; the runner can start from it. */
+function suggestedTask(project: ReturnType<typeof readProject>): string {
+  const now = project.plan?.now.find((task) => !task.done);
+  if (now !== undefined) return now.text;
+  const next = project.plan?.next.find((task) => !task.done);
+  if (next !== undefined) return next.text;
+  return project.nextSteps[0] ?? "";
 }
 
 export default async function ProjectPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -127,6 +137,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
       </div>
 
       <Goals slug={slug} />
+
+      <TaskRunner slug={slug} folder={folder} suggestedTask={suggestedTask(project)} />
 
       <section className="card">
         <h2>Full README</h2>

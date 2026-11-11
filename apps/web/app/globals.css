@@ -604,8 +604,152 @@ a.card:focus-visible {
   font-weight: 600;
 }
 
+/* opencode task runner */
+
+.task-runner .project-card-head {
+  align-items: center;
+}
+
+.task-runner code {
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  word-break: break-word;
+}
+
+.notice.warn {
+  color: var(--warn);
+}
+
+.job-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 14px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.job-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.job-form .field {
+  margin: 10px 0;
+}
+
+.job-form .field textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+
+.job-history {
+  margin-top: 20px;
+}
+
+.job-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.job-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  text-align: left;
+}
+
+.job-row.active {
+  border-color: var(--accent);
+}
+
+.job-task {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.job-status {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.job-status.running {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.job-status.succeeded {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.job-status.failed {
+  border-color: #c25b5b;
+  color: #c25b5b;
+}
+
+.job-status.cancelled {
+  color: var(--muted);
+}
+
+.job-detail {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.job-detail h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.job-log {
+  max-height: 320px;
+  margin: 12px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.job-detail > button {
+  margin-top: 10px;
+}
+
 @media (max-width: 900px) {
   .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .job-form-row {
     grid-template-columns: 1fr;
   }
 }

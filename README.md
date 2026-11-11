@@ -6,7 +6,7 @@ project: slate
 status: in-progress
 milestone: M0 — foundation
 agent: opencode/deepseek-v4.1-flash-free
-updated: 2026-11-11T02:50:00Z
+updated: 2026-11-11T03:02:00Z
 ---
 
 ## Goal
@@ -16,7 +16,6 @@ already keep and tells you how far along everything is.
 ## Now
 - [ ] `packages/bridge`: folder watcher, atomic writer, git facts
 - [ ] Editor: BlockNote skeleton with the page tree
-- [ ] Launch tasks with the opencode CLI from the web UI
 
 ## Next
 - [ ] Auth, workspaces and the API routes (rest of M0)
@@ -32,6 +31,7 @@ already keep and tells you how far along everything is.
 - [x] **OpenRouter**: key stored outside the repository, shown masked, model catalogue, test message
 - [x] Project detail view with a project sidebar, editable goals, and checked-off tasks
 - [x] In-app agent chat over OpenRouter, with workspace and project context
+- [x] **opencode task runner**: start plan or build jobs from a project page, stream logs, cancel
 - [x] Calendar month view shell (scheduling and Google sync still to come)
 - [x] Copilot session hook prototyped, then dropped in favour of the repository check
 
@@ -46,6 +46,7 @@ already keep and tells you how far along everything is.
 - 2026-11-11 — project detail view: goals, checked-off tasks, full README
 - 2026-11-11 — agent chat over OpenRouter with workspace and project context
 - 2026-11-11 — project sidebar and calendar month view shell
+- 2026-11-11 — opencode task runner: confirmation and local-origin guards, live logs, cancel
 <!-- slate:plan:end -->
 
 <!-- slate:status:begin project=slate -->
