@@ -59,6 +59,7 @@ describe("summarizeReadme", () => {
     expect(summary.milestone).toBe("M2 — playback");
     expect(summary.goal).toBe("Ship a Spotify-shaped client.");
     expect(summary.tasks).toEqual({ done: 2, total: 3 });
+    expect(summary.taskItems.filter((task) => task.done)).toHaveLength(2);
     expect(summary.plan?.agent).toBe("opencode/test");
   });
 
@@ -72,6 +73,7 @@ describe("summarizeReadme", () => {
       "Tracks household spending so I can see what is left before the month ends.",
     );
     expect(summary.tasks).toEqual({ done: 2, total: 3 });
+    expect(summary.taskItems.map((task) => task.done)).toEqual([true, true, false]);
     expect(summary.nextSteps).toEqual([
       "write the CSV importer",
       "add a spending report",

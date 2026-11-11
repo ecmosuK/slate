@@ -12,7 +12,7 @@
  * follow the protocol is a dashboard most projects do not appear in.
  */
 
-import { parsePlan, type Plan } from "./plan.ts";
+import { parsePlan, type Plan, type PlanTask } from "./plan.ts";
 import { findZone } from "./zones.ts";
 
 export interface TaskCounts {
@@ -29,6 +29,8 @@ export interface ProjectSummary {
   milestone: string | null;
   nextSteps: string[];
   tasks: TaskCounts;
+  /** Every checkbox in the document, including the ones already ticked. */
+  taskItems: PlanTask[];
   /** Headings in the document, in order. */
   sections: string[];
   /** The parsed plan block, when there is one. */
@@ -159,12 +161,16 @@ export function summarizeReadme(text: string, options: SummarizeOptions): Projec
 
   let done = 0;
   let total = 0;
+  const taskItems: PlanTask[] = [];
   for (const line of lines) {
     if (line.inFence) continue;
     const checkbox = CHECKBOX.exec(line.text);
     if (checkbox === null) continue;
+    const text = (checkbox[2] ?? "").trim();
     total += 1;
-    if ((checkbox[1] ?? " ").toLowerCase() === "x") done += 1;
+    const checked = (checkbox[1] ?? " ").toLowerCase() === "x";
+    if (checked) done += 1;
+    taskItems.push({ text, done: checked });
   }
 
   if (goal === null) {
@@ -206,6 +212,7 @@ export function summarizeReadme(text: string, options: SummarizeOptions): Projec
     milestone,
     nextSteps,
     tasks: { done, total },
+    taskItems,
     sections,
     plan,
     source,

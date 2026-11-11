@@ -18,7 +18,9 @@
     "noEmit": true,
     "forceConsistentCasingInFileNames": true,
     "types": ["node"],
+    "baseUrl": ".",
     "paths": {
+      "@/*": ["./apps/web/*"],
       "@slate/shared": ["./packages/shared/src/index.ts"],
       "@slate/db": ["./packages/db/src/index.ts"]
     }

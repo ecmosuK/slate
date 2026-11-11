@@ -68,12 +68,17 @@ export async function listModels(
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-/** Send one small message, to prove the key and the model work. */
-export async function complete(
+export interface ChatTurn {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+async function sendMessages(
   apiKey: string,
   model: string,
-  message: string,
-  fetchImpl: typeof fetch = fetch,
+  messages: ChatTurn[],
+  maxTokens: number,
+  fetchImpl: typeof fetch,
 ): Promise<CompletionResult> {
   try {
     const response = await fetchImpl(`${OPENROUTER_BASE}/chat/completions`, {
@@ -85,8 +90,8 @@ export async function complete(
       },
       body: JSON.stringify({
         model,
-        messages: [{ role: "user", content: message }],
-        max_tokens: 64,
+        messages,
+        max_tokens: maxTokens,
       }),
     });
 
@@ -128,4 +133,24 @@ export async function complete(
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+/** Send one small message, to prove the key and the model work. */
+export async function complete(
+  apiKey: string,
+  model: string,
+  message: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<CompletionResult> {
+  return sendMessages(apiKey, model, [{ role: "user", content: message }], 64, fetchImpl);
+}
+
+/** A longer, multi-turn conversation for the in-app agent. */
+export async function chat(
+  apiKey: string,
+  model: string,
+  messages: ChatTurn[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<CompletionResult> {
+  return sendMessages(apiKey, model, messages, 2048, fetchImpl);
 }
