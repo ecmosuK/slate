@@ -27,9 +27,31 @@ export default function Sidebar({ projects }: SidebarProps) {
 
   return (
     <aside className="sidebar">
-      <Link className="sidebar-brand" href="/">
-        Slate
-      </Link>
+      <div className="sidebar-top">
+        <Link className="sidebar-brand" href="/">
+          Slate
+        </Link>
+        <Link
+          className={isActive(pathname, "/") ? "sidebar-home active" : "sidebar-home"}
+          href="/"
+          aria-label="Home"
+          title="Home"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3 11 12 3l9 8" />
+            <path d="M5 10v11h14V10" />
+            <path d="M10 21v-6h4v6" />
+          </svg>
+        </Link>
+      </div>
 
       <nav className="sidebar-nav" aria-label="Main">
         <Link className={isActive(pathname, "/chat") ? "sidebar-link active" : "sidebar-link"} href="/chat">

@@ -32,6 +32,42 @@
   text-decoration: none;
 }
 
+.sidebar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sidebar-home {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.sidebar-home:hover,
+.sidebar-home:focus-visible {
+  border-color: var(--accent);
+  background: var(--bg);
+  color: var(--accent);
+}
+
+.sidebar-home.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sidebar-home svg {
+  width: 15px;
+  height: 15px;
+}
+
 .sidebar-nav {
   display: flex;
   flex-direction: column;
