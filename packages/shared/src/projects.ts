@@ -7,7 +7,7 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 import { summarizeReadme, type ProjectSummary } from "./readme.ts";
 
@@ -42,6 +42,13 @@ function gitFacts(folder: string): GitFacts | null {
   };
 
   if (run(["rev-parse", "--is-inside-work-tree"]) !== "true") return null;
+
+  // Only the project's own repository counts. A project that merely sits inside another
+  // repository (a workspace folder inside Slate, say) must not report that repository's branch
+  // or its dirty state as if it were the project's own.
+  const top = run(["rev-parse", "--show-toplevel"]);
+  if (top === null || top === "") return null;
+  if (resolve(top) !== resolve(folder)) return null;
 
   const head = run(["log", "-1", "--format=%h|%cI"]);
   const [shortSha = null, committedAt = null] = (head ?? "").split("|");

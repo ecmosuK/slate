@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 
+import { capForModel, readConfig } from "@slate/shared";
+
 import { JobError, listJobs, startJob, type JobMode } from "@/lib/jobs";
+import { DEFAULT_JOB_MODEL } from "@/lib/job-defaults";
 import { isJsonRequest, isLocalRequest } from "@/lib/local-request";
+import { capRemainingDollars, formatDollars, spentMicrosForModel } from "@/lib/spend";
+import { guardWrite } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +18,9 @@ export async function GET(request: Request) {
 
 /** Start a task through the local opencode CLI. */
 export async function POST(request: Request) {
+  const denied = await guardWrite();
+  if (denied !== null) return denied;
+
   if (!isLocalRequest(request)) {
     return NextResponse.json({ ok: false, error: "local requests only" }, { status: 403 });
   }
@@ -49,6 +57,21 @@ export async function POST(request: Request) {
   const task = typeof payload.task === "string" ? payload.task : "";
   const mode: JobMode = payload.mode === "plan" ? "plan" : "build";
   const model = typeof payload.model === "string" ? payload.model : null;
+  const modelId = model ?? DEFAULT_JOB_MODEL;
+
+  const config = readConfig();
+  const remaining = capRemainingDollars(config, modelId);
+  if (remaining !== null && remaining <= 0) {
+    const cap = capForModel(config, modelId) ?? 0;
+    const spent = spentMicrosForModel(modelId) / 1_000_000;
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `spend cap reached for ${modelId}: $${formatDollars(spent * 1_000_000)} of $${formatDollars(cap * 1_000_000)} spent`,
+      },
+      { status: 402 },
+    );
+  }
 
   try {
     const job = startJob({ project, task, mode, model });

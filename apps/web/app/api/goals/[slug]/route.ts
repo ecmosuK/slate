@@ -8,8 +8,10 @@ import {
   createGoal,
   deleteGoal,
   readGoals,
+  reorderGoals,
   updateGoal,
 } from "@/lib/goals";
+import { guardWrite } from "@/lib/session";
 
 type Context = { params: Promise<{ slug: string }> };
 
@@ -54,6 +56,9 @@ export async function GET(_request: Request, context: Context) {
 }
 
 export async function POST(request: Request, context: Context) {
+  const denied = await guardWrite();
+  if (denied !== null) return denied;
+
   const target = await resolve(context);
   if (!target.ok) return target.response;
 
@@ -64,7 +69,12 @@ export async function POST(request: Request, context: Context) {
     body = null;
   }
 
-  const payload = (body ?? {}) as { title?: unknown; description?: unknown };
+  const payload = (body ?? {}) as {
+    title?: unknown;
+    description?: unknown;
+    priority?: unknown;
+    position?: unknown;
+  };
 
   try {
     const goal = createGoal(target.folder, payload);
@@ -75,6 +85,9 @@ export async function POST(request: Request, context: Context) {
 }
 
 export async function PATCH(request: Request, context: Context) {
+  const denied = await guardWrite();
+  if (denied !== null) return denied;
+
   const target = await resolve(context);
   if (!target.ok) return target.response;
 
@@ -91,9 +104,20 @@ export async function PATCH(request: Request, context: Context) {
     title?: unknown;
     description?: unknown;
     status?: unknown;
+    priority?: unknown;
+    move?: unknown;
+    order?: unknown;
   };
 
   try {
+    // An explicit order rewrites the whole list; otherwise one goal is updated.
+    if (Array.isArray(payload.order)) {
+      const goals = reorderGoals(
+        target.folder,
+        payload.order.filter((entry): entry is string => typeof entry === "string"),
+      );
+      return NextResponse.json({ ok: true, goals });
+    }
     const goal = updateGoal(target.folder, payload);
     return NextResponse.json({ ok: true, goal, goals: readGoals(target.folder) });
   } catch (error) {
@@ -102,6 +126,9 @@ export async function PATCH(request: Request, context: Context) {
 }
 
 export async function DELETE(request: Request, context: Context) {
+  const denied = await guardWrite();
+  if (denied !== null) return denied;
+
   const target = await resolve(context);
   if (!target.ok) return target.response;
 

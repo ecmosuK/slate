@@ -46,10 +46,30 @@ describe("scaffoldProject", () => {
     expect(existsSync(result.folder)).toBe(true);
     expect(existsSync(join(result.folder, "README.md"))).toBe(true);
     expect(existsSync(join(result.folder, "AGENTS.md"))).toBe(true);
+    expect(existsSync(join(result.folder, "TERMINAL.md"))).toBe(true);
     expect(existsSync(join(result.folder, "CLAUDE.md"))).toBe(true);
     expect(existsSync(join(result.folder, "GEMINI.md"))).toBe(true);
     expect(existsSync(join(result.folder, ".cursor", "rules", "slate.mdc"))).toBe(true);
     expect(existsSync(join(result.folder, ".github", "copilot-instructions.md"))).toBe(true);
+  });
+
+  it("writes the terminal and preview guide into new projects", () => {
+    const root = makeRoot();
+    const result = scaffoldProject(root, { name: "Budget Tracker", description: "Track spending" });
+
+    const guide = readFileSync(join(result.folder, "TERMINAL.md"), "utf8");
+    expect(guide).toContain("# Terminal and preview");
+    expect(guide).toContain("The **terminal** is a real shell");
+    expect(guide).toContain("Each Python project gets its own");
+    expect(guide).toContain("The preview follows the port the server prints");
+  });
+
+  it("points agents at the terminal and preview guide", () => {
+    const root = makeRoot();
+    const result = scaffoldProject(root, { name: "Budget Tracker", description: "Track spending" });
+
+    const agents = readFileSync(join(result.folder, "AGENTS.md"), "utf8");
+    expect(agents).toContain("TERMINAL.md");
   });
 
   it("writes a readme with the three zones and the description", () => {

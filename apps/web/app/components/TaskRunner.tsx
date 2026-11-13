@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { DEFAULT_JOB_MODEL } from "@/lib/job-defaults";
 
 type JobMode = "plan" | "build";
-type JobStatus = "running" | "succeeded" | "failed" | "cancelled";
+type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
 interface JobSummary {
   id: string;
@@ -15,16 +15,21 @@ interface JobSummary {
   model: string | null;
   status: JobStatus;
   createdAt: string;
-  startedAt: string;
+  startedAt: string | null;
   endedAt: string | null;
   exitCode: number | null;
   sessionID: string | null;
   error: string | null;
   command: string;
+  costMicros: number;
 }
 
 interface JobDetail extends JobSummary {
   log: string;
+}
+
+function dollars(micros: number): string {
+  return `$${(micros / 1_000_000).toFixed(4)}`;
 }
 
 interface ListBody {
@@ -41,6 +46,8 @@ interface DetailBody {
 
 function statusLabel(status: JobStatus): string {
   switch (status) {
+    case "queued":
+      return "queued";
     case "running":
       return "running";
     case "succeeded":
@@ -54,6 +61,14 @@ function statusLabel(status: JobStatus): string {
 
 function shortTask(task: string): string {
   return task.length <= 80 ? task : `${task.slice(0, 80)}…`;
+}
+
+/** What to show in the terminal when a run has produced no output yet. */
+function logPlaceholder(job: JobDetail): string {
+  if (job.log !== "") return job.log;
+  if (job.status === "running") return "Waiting for output…";
+  if (job.status === "queued") return "Queued — waiting for the current task to finish.";
+  return "No output was captured.";
 }
 
 export default function TaskRunner({
@@ -74,6 +89,8 @@ export default function TaskRunner({
   const [selected, setSelected] = useState<JobDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [minimised, setMinimised] = useState(false);
 
   useEffect(() => {
     setTask(suggestedTask);
@@ -137,6 +154,7 @@ export default function TaskRunner({
   }, [selectedId]);
 
   const running = jobs.find((job) => job.status === "running");
+  const queuedCount = jobs.filter((job) => job.status === "queued").length;
 
   async function start(event: React.FormEvent) {
     event.preventDefault();
@@ -175,6 +193,7 @@ export default function TaskRunner({
   async function cancel(job: JobDetail) {
     setBusy(true);
     setError(null);
+    setCancellingId(job.id);
     try {
       const response = await fetch(`/api/jobs/${encodeURIComponent(job.id)}/cancel`, {
         method: "POST",
@@ -187,6 +206,30 @@ export default function TaskRunner({
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
+      setCancellingId(null);
+      setBusy(false);
+    }
+  }
+
+  async function remove(job: JobSummary) {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/jobs/${encodeURIComponent(job.id)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const body = (await response.json()) as { ok: boolean; error?: string };
+      if (!response.ok || !body.ok) throw new Error(body.error ?? "The run could not be deleted.");
+      setJobs((current) => current.filter((entry) => entry.id !== job.id));
+      if (selectedId === job.id) {
+        setSelectedId(null);
+        setSelected(null);
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
       setBusy(false);
     }
   }
@@ -195,9 +238,29 @@ export default function TaskRunner({
     <section className="card task-runner">
       <div className="project-card-head">
         <h2>Run a task</h2>
-        <span className="chip">opencode CLI</span>
+        <div className="row">
+          <span className="chip">opencode CLI</span>
+          <button
+            type="button"
+            className="task-collapse-button"
+            onClick={() => setMinimised((current) => !current)}
+            aria-expanded={!minimised}
+          >
+            {minimised ? "Expand" : "Minimise"}
+          </button>
+        </div>
       </div>
 
+      {minimised ? (
+        <p className="meta">
+          {jobs.length === 0
+            ? "No tasks have run for this project yet."
+            : `${jobs.length} run(s) · ${
+                running !== undefined ? "one is running" : "none running"
+              }${queuedCount > 0 ? ` · ${queuedCount} queued` : ""}`}
+        </p>
+      ) : (
+        <>
       <p className="meta">
         Starts <code>opencode run</code> in <code>{folder}</code> as your Windows user. The default
         model is <code>{DEFAULT_JOB_MODEL}</code>, OpenRouter’s free router.
@@ -250,11 +313,15 @@ export default function TaskRunner({
           <button
             className="primary"
             type="submit"
-            disabled={busy || !confirmed || task.trim() === "" || running !== undefined}
+            disabled={busy || !confirmed || task.trim() === ""}
           >
-            {busy ? "Starting…" : "Start with opencode"}
+            {busy ? "Starting…" : running !== undefined ? "Queue with opencode" : "Start with opencode"}
           </button>
-          {running !== undefined && <span className="meta">A task is already running.</span>}
+          {running !== undefined && (
+            <span className="meta">
+              A task is running{queuedCount > 0 ? ` · ${queuedCount} queued` : ""}.
+            </span>
+          )}
         </div>
       </form>
 
@@ -268,17 +335,34 @@ export default function TaskRunner({
           <ul className="job-list">
             {jobs.map((job) => (
               <li key={job.id}>
-                <button
-                  type="button"
-                  className={job.id === selectedId ? "job-row active" : "job-row"}
-                  onClick={() => setSelectedId(job.id)}
-                >
-                  <span className={`job-status ${job.status}`}>{statusLabel(job.status)}</span>
-                  <span className="job-task">{shortTask(job.task)}</span>
-                  <span className="job-meta">
-                    {job.mode} · {new Date(job.createdAt).toLocaleString()}
-                  </span>
-                </button>
+                <div className={job.id === selectedId ? "job-row active" : "job-row"}>
+                  <button
+                    type="button"
+                    className="job-row-select"
+                    onClick={() => setSelectedId(job.id)}
+                  >
+                    <span className={`job-status ${job.status}`}>{statusLabel(job.status)}</span>
+                    <span className="job-task">{shortTask(job.task)}</span>
+                    <span className="job-meta">
+                      {job.mode} · {new Date(job.createdAt).toLocaleString()}
+                      {job.costMicros > 0 && <span> · {dollars(job.costMicros)} spent</span>}
+                    </span>
+                  </button>
+                  {(job.status === "succeeded" ||
+                    job.status === "failed" ||
+                    job.status === "cancelled") && (
+                    <button
+                      type="button"
+                      className="job-delete"
+                      onClick={() => void remove(job)}
+                      disabled={busy}
+                      aria-label={`Delete the run of ${shortTask(job.task)}`}
+                      title="Delete this run"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -296,18 +380,38 @@ export default function TaskRunner({
             {selected.model !== null && <span>· {selected.model}</span>}
             {selected.sessionID !== null && <span>· session {selected.sessionID}</span>}
             {selected.exitCode !== null && <span>· exit {selected.exitCode}</span>}
+            {selected.costMicros > 0 && <span> · {dollars(selected.costMicros)} spent</span>}
           </div>
           <p className="meta">
             <code>{selected.command}</code>
           </p>
           {selected.error !== null && <p className="notice bad">{selected.error}</p>}
-          {selected.status === "running" && (
-            <button type="button" onClick={() => void cancel(selected)} disabled={busy}>
-              Cancel task
-            </button>
-          )}
-          <pre className="job-log">{selected.log === "" ? "Waiting for output…" : selected.log}</pre>
+          <div className="row job-detail-actions">
+            {(selected.status === "running" || selected.status === "queued") && (
+              <button
+                type="button"
+                onClick={() => void cancel(selected)}
+                disabled={busy}
+              >
+                {cancellingId === selected.id
+                  ? "Cancelling…"
+                  : selected.status === "queued"
+                    ? "Remove from queue"
+                    : "Cancel task"}
+              </button>
+            )}
+            {(selected.status === "succeeded" ||
+              selected.status === "failed" ||
+              selected.status === "cancelled") && (
+              <button type="button" onClick={() => void remove(selected)} disabled={busy}>
+                Delete run
+              </button>
+            )}
+          </div>
+          <pre className="job-log">{logPlaceholder(selected)}</pre>
         </div>
+      )}
+        </>
       )}
     </section>
   );

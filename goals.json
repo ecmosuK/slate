@@ -1,0 +1,26 @@
+{
+  "goals": [
+    {
+      "id": "246b2242-2e96-4cd2-b4fa-45430cdeafc8",
+      "title": "UI for viewing projects",
+      "description": "It allows me to see exactly how the project looks when it is run",
+      "status": "pending",
+      "priority": "medium",
+      "dueAt": "",
+      "tasks": [],
+      "createdAt": "2026-11-11T13:37:25.797Z",
+      "updatedAt": "2026-11-11T13:37:25.797Z"
+    },
+    {
+      "id": "cd62d59b-7e4d-4994-93cd-ddff440fc59d",
+      "title": "Shell terminal",
+      "description": "allows me to run the projects and is sent to the ui screen so I can view the projects",
+      "status": "pending",
+      "priority": "medium",
+      "dueAt": "",
+      "tasks": [],
+      "createdAt": "2026-11-11T13:37:55.648Z",
+      "updatedAt": "2026-11-11T13:37:55.648Z"
+    }
+  ]
+}

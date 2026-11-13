@@ -48,7 +48,7 @@ export type PlanParseResult =
 export const PLAN_BUDGETS = {
   now: 7,
   next: 10,
-  done: 15,
+  done: 100,
   log: 15,
   bytes: 8 * 1024,
 } as const;

@@ -1,8 +1,8 @@
 import { join } from "node:path";
 
-import { listProjects, readConfig, isInside, type ProjectFolder } from "@slate/shared";
+import { DEFAULT_PROJECTS_ROOT, listProjects, readConfig, isInside, type ProjectFolder } from "@slate/shared";
 
-export const DEFAULT_PROJECTS_ROOT = "C:\\Users\\kaede\\Documents\\projects";
+export { DEFAULT_PROJECTS_ROOT };
 
 /** Where projects live: the saved setting first, then the environment, then the default. */
 export function projectsRoot(): string {

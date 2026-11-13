@@ -18,6 +18,7 @@ Before any other action, read the \`slate:plan\` block in \`README.md\`.
 
 - If it is missing, run \`slate plan ensure\` or create it from the template, and set \`project:\`
   to this folder's name.
+- Read the \`TERMINAL.md\` in the project root for how the terminal and preview panels are used.
 - Restate the current milestone and the first unchecked task under \`## Now\` in one line, then work.
 - Edit only inside the \`slate:plan\` markers. Never touch \`slate:status\`, \`slate:requests\`, or
   any prose outside the blocks.
@@ -32,6 +33,52 @@ The authoritative instructions for this project live in \`AGENTS.md\`. Read that
 
 It describes the Slate plan protocol: the \`slate:plan\` block in \`README.md\` is the contract
 between the agent and the Slate app.
+`;
+
+/**
+ * The guide every agent gets for the terminal and preview panels.
+ *
+ * It lives here, next to the agent instructions, so the CLI and the web app write the same file and
+ * the wording cannot drift between them.
+ */
+export const TERMINAL_GUIDE_FILENAME = "TERMINAL.md";
+
+export const TERMINAL_GUIDE_TEMPLATE = `# Terminal and preview
+
+Slate gives a project two ways to be seen:
+
+- The **terminal** is a real shell in the project folder. It is a pseudo-terminal when node-pty is
+  available, so colours, cursor movement and Ctrl+C behave like a normal console. It is how commands
+  get run: \`npm run dev\`, \`python -m http.server\`, tests, builds.
+- The **preview** is a view of the server the terminal is running. It appears once that server prints
+  a port, frames exactly that port, and can be popped out into a real browser tab.
+
+How to use them:
+
+- On Windows, the terminal is a persistent PowerShell session. The first time it opens, Slate
+  installs dependencies from \`package.json\`, \`requirements.txt\` or \`pyproject.toml\` when present.
+  Each Python project gets its own \`.venv\`; setup repeats when its dependency files change.
+- To run something: type the command in the box at the bottom and click **Run** - for example,
+  \`npm run dev\`, \`python snake.py\`, \`python -m http.server\`, tests or builds.
+- To look at the app: the Preview button appears once the terminal output names a port. Slate never
+  starts a server on its own, so nothing runs until you start it in the terminal.
+- Minimising or closing the preview only hides the frame; the terminal process keeps running, and
+  reopening the preview shows the same server and port. Stop the server from the terminal with Ctrl+C
+  (or Stop for a one-command session), and the preview goes away with it.
+
+How a project becomes previewable:
+
+- Give it a command that starts a server and run that command in the terminal: a package script, a
+  Flask or FastAPI entry point, \`python -m http.server\` for plain files, or any other dev server.
+- The preview follows the port the server prints. A project that previews cleanly can be moved to a
+  real website without changes, because there is no Slate-specific layer in front of its files.
+
+Portability:
+
+- Anything the preview shows is portable: it is the project's own server and its real files.
+- When a project has its own server tooling (a \`package.json\` with a \`dev\` or \`start\` script, or a
+  Python entry point), run that server in the terminal and the preview follows the port it announces.
+
 `;
 
 /** The pointer files written next to a project, so every harness finds the instructions. */
@@ -117,6 +164,10 @@ export function scaffoldProject(root: string, options: ScaffoldOptions): Scaffol
   writeFileSync(agentsPath, AGENTS_TEMPLATE, "utf8");
   created.push("AGENTS.md");
 
+  const guidePath = join(folder, TERMINAL_GUIDE_FILENAME);
+  writeFileSync(guidePath, TERMINAL_GUIDE_TEMPLATE, "utf8");
+  created.push(TERMINAL_GUIDE_FILENAME);
+
   for (const relative of POINTER_FILES) {
     const path = join(folder, relative);
     if (existsSync(path)) continue;
@@ -149,5 +200,13 @@ export function ensurePlanBlock(folder: string): { changed: boolean } {
   });
   if (!existing.changed) return { changed: false };
   writeFileSync(readmePath, existing.text, "utf8");
+  return { changed: true };
+}
+
+/** Write the terminal and preview guide into a project folder when it is missing. */
+export function ensureTerminalGuide(folder: string): { changed: boolean } {
+  const guidePath = join(folder, TERMINAL_GUIDE_FILENAME);
+  if (existsSync(guidePath)) return { changed: false };
+  writeFileSync(guidePath, TERMINAL_GUIDE_TEMPLATE, "utf8");
   return { changed: true };
 }

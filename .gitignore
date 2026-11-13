@@ -9,3 +9,7 @@ coverage/
 .DS_Store
 Thumbs.db
 *.log
+
+# Projects live inside the repo per workspace; they are not part of Slate itself.
+workspaces/
+.venv/

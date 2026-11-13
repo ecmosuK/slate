@@ -17,14 +17,15 @@ export interface OpenRouterModel {
   /** Price per token, in the provider's own units (usually USD per token). */
   promptPrice: number | null;
   completionPrice: number | null;
-  /** Where the model is called from: OpenRouter's API, or opencode's own provider. */
-  source?: "openrouter" | "opencode";
+  /** Where the model is called from. */
+  source?: "openrouter" | "opencode" | "gemini";
   /** Whether the model advertises tool/function calling. */
   tools?: boolean | null;
 }
 
 /** A model is free when it costs nothing to call. */
-export function isFreeModel(model: Pick<OpenRouterModel, "id" | "promptPrice" | "completionPrice">): boolean {
+export function isFreeModel(model: Pick<OpenRouterModel, "id" | "promptPrice" | "completionPrice" | "source">): boolean {
+  if (model.source === "gemini") return true;
   if (model.promptPrice === 0 && model.completionPrice === 0) return true;
   if (model.id === "openrouter/free" || model.id.endsWith(":free")) return true;
   return false;
@@ -218,7 +219,9 @@ function normaliseToolCalls(value: unknown): ChatToolCall[] {
     if (entry === null || typeof entry !== "object") return;
     const row = entry as {
       id?: unknown;
-      function?: { name?: unknown; arguments?: unknown };
+      type?: unknown;
+      function?: { name?: unknown; arguments?: unknown; [key: string]: unknown };
+      [key: string]: unknown;
     };
     const name = typeof row.function?.name === "string" ? row.function.name : "";
     if (name === "") return;
@@ -234,11 +237,16 @@ function normaliseToolCalls(value: unknown): ChatToolCall[] {
       }
     }
 
-    calls.push({
-      id: typeof row.id === "string" && row.id !== "" ? row.id : `call_${index}`,
-      type: "function",
-      function: { name, arguments: args },
-    });
+    // Preserve provider-specific fields (e.g. thought signatures) by keeping the raw entry.
+    const preserved: any = { ...row };
+    preserved.id = typeof row.id === "string" && row.id !== "" ? row.id : `call_${index}`;
+    preserved.type = "function";
+    preserved.function = {
+      ...(row.function && typeof row.function === "object" ? row.function : {}),
+      name,
+      arguments: args,
+    };
+    calls.push(preserved as ChatToolCall);
   });
 
   return calls;
@@ -270,7 +278,6 @@ export async function chatWithTools(
         messages,
         max_tokens: 2048,
         tools,
-        tool_choice: "auto",
       }),
     });
 
@@ -314,11 +321,18 @@ export async function chatWithTools(
     }
 
     const toolCalls = normaliseToolCalls(raw.tool_calls);
+    const content = typeof raw.content === "string" ? raw.content : null;
     const message: AgentMessage = {
+      ...(raw as Record<string, unknown>),
       role: "assistant",
-      content: typeof raw.content === "string" ? raw.content : null,
-    };
-    if (toolCalls.length > 0) message.tool_calls = toolCalls;
+      // Some providers reject null content on assistant tool-call messages.
+      content: toolCalls.length > 0 ? (content ?? "") : content,
+    } as AgentMessage;
+    if (toolCalls.length > 0) {
+      message.tool_calls = toolCalls;
+    } else {
+      delete (message as any).tool_calls;
+    }
 
     return {
       ok: true,

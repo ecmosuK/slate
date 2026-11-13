@@ -18,10 +18,13 @@ import { basename, join, resolve } from "node:path";
 
 import {
   AGENTS_TEMPLATE,
+  DEFAULT_PROJECTS_ROOT,
   POINTER_FILES,
   POINTER_TEMPLATE,
+  TERMINAL_GUIDE_FILENAME,
   complete,
   configPath,
+  ensureTerminalGuide,
   findZone,
   formatPlan,
   listModels,
@@ -131,8 +134,6 @@ function appendLog(body: string, entry: string, agent: string, updated: string):
   return updatedLines.join("\n");
 }
 
-const DEFAULT_PROJECTS_ROOT = "C:\\Users\\kaede\\Documents\\projects";
-
 function projectsRootOf(args: Args): string {
   return flagString(
     args,
@@ -179,14 +180,22 @@ function commandConfig(args: Args): number {
   if (action === "set") {
     if (key === "key") {
       writeConfig({
-        openrouter: { apiKey: value === "" ? null : value, defaultModel: config.openrouter.defaultModel },
+        openrouter: {
+          apiKey: value === "" ? null : value,
+          defaultModel: config.openrouter.defaultModel,
+          caps: config.openrouter.caps,
+        },
       });
       process.stdout.write(`key saved to ${configPath()}\n`);
       return 0;
     }
     if (key === "model") {
       writeConfig({
-        openrouter: { apiKey: config.openrouter.apiKey, defaultModel: value === "" ? null : value },
+        openrouter: {
+          apiKey: config.openrouter.apiKey,
+          defaultModel: value === "" ? null : value,
+          caps: config.openrouter.caps,
+        },
       });
       process.stdout.write(`default model set to ${value}\n`);
       return 0;
@@ -258,6 +267,8 @@ function commandInit(args: Args): number {
   const agentsPath = join(folder, "AGENTS.md");
   if (!existsSync(agentsPath)) writeFileSync(agentsPath, AGENTS_TEMPLATE, "utf8");
 
+  const guideChanged = ensureTerminalGuide(folder);
+
   for (const relative of POINTER_FILES) {
     const path = join(folder, relative);
     if (existsSync(path)) continue;
@@ -266,6 +277,7 @@ function commandInit(args: Args): number {
   }
 
   process.stdout.write(`initialised ${folder}\n`);
+  if (guideChanged.changed) process.stdout.write(`  ${TERMINAL_GUIDE_FILENAME}\n`);
   return 0;
 }
 
@@ -464,7 +476,7 @@ function commandDoctor(args: Args): number {
     if (!parsed.ok) problems.push(`plan block: ${parsed.reason} (${parsed.detail})`);
   }
 
-  for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md"]) {
+  for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md", TERMINAL_GUIDE_FILENAME]) {
     if (!existsSync(join(folder, name))) problems.push(`missing ${name}`);
   }
 

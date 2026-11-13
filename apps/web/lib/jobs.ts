@@ -1,14 +1,59 @@
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { dirname, isAbsolute, join } from "node:path";
 import { createInterface } from "node:readline";
 
+import { capForModel, readConfig, type SlateConfig } from "@slate/shared";
 import { DEFAULT_JOB_MODEL } from "./job-defaults";
+import { resolveOpencodeBinary } from "./opencode-binary";
 import { projectFolder } from "./projects";
+import { spentMicrosForModel } from "./spend";
 
 export type JobMode = "plan" | "build";
-export type JobStatus = "running" | "succeeded" | "failed" | "cancelled";
+export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+/** The process spawner used for job runs. Tests replace it. */
+export type JobSpawn = (
+  command: string,
+  args: readonly string[],
+  options: {
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    stdio: ("ignore" | "pipe")[];
+    windowsHide: boolean;
+  },
+) => ChildProcess;
+
+let spawnImpl: JobSpawn = spawn;
+
+/** Replace the spawner used for job runs. Pass null to restore the real one. */
+export function setJobSpawn(fn: JobSpawn | null): void {
+  spawnImpl = fn ?? spawn;
+}
+
+/** Where a project's folder is looked up. Tests replace it. */
+let folderResolver: (slug: string) => string | null = projectFolder;
+
+/** Replace the folder resolver used for job runs. Pass null to restore the real one. */
+export function setJobFolderResolver(fn: ((slug: string) => string | null) | null): void {
+  folderResolver = fn ?? projectFolder;
+}
+
+/** Where the opencode executable is found. Tests replace it. */
+let binaryResolver: () => string | null = resolveOpencodeBinary;
+
+/** Replace the opencode binary lookup. Pass null to restore the real one. */
+export function setJobBinaryResolver(fn: (() => string | null) | null): void {
+  binaryResolver = fn ?? resolveOpencodeBinary;
+}
+
+/** How a run's process tree is stopped. Tests replace it. */
+let killImpl: (child: ChildProcess | null) => void = killTree;
+
+/** Replace the process-tree killer. Pass null to restore the real one. */
+export function setJobKill(fn: ((child: ChildProcess | null) => void) | null): void {
+  killImpl = fn ?? killTree;
+}
 
 export interface JobSummary {
   id: string;
@@ -18,12 +63,14 @@ export interface JobSummary {
   model: string | null;
   status: JobStatus;
   createdAt: string;
-  startedAt: string;
+  startedAt: string | null;
   endedAt: string | null;
   exitCode: number | null;
   sessionID: string | null;
   error: string | null;
   command: string;
+  /** What the run cost, in millionths of a dollar. Zero when not measured. */
+  costMicros: number;
 }
 
 export interface JobDetail extends JobSummary {
@@ -33,6 +80,9 @@ export interface JobDetail extends JobSummary {
 interface JobRecord extends JobSummary {
   log: string;
   stopReason: "cancelled" | "timeout" | null;
+  folder: string;
+  args: string[];
+  binary: string;
 }
 
 interface JobEntry {
@@ -69,6 +119,43 @@ function clip(text: string, limit: number): string {
   return text.length <= limit ? text : `${text.slice(0, limit)}…`;
 }
 
+/** One opencode `step_finish` event's reported cost, in millionths of a dollar. */
+export function costMicrosFromEvent(line: string): number | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== "object") return null;
+  const event = parsed as { type?: unknown; part?: unknown };
+  if (event.type !== "step_finish") return null;
+  const part =
+    event.part !== null && typeof event.part === "object"
+      ? (event.part as Record<string, unknown>)
+      : null;
+  if (part === null) return null;
+  const cost = part["cost"];
+  if (typeof cost !== "number" || !Number.isFinite(cost) || cost <= 0) return null;
+  return Math.round(cost * 1_000_000);
+}
+
+/**
+ * Refuse to start a job on a model whose recorded spend has reached its configured cap.
+ * Spend is the total charged to the model across every job (and chat turn) so far.
+ */
+export function enforceModelCap(model: string, config: SlateConfig): void {
+  const cap = capForModel(config, model);
+  if (cap === null) return;
+  const spent = spentMicrosForModel(model) / 1_000_000;
+  if (spent < cap) return;
+  throw new JobError(
+    `${model} has reached its spend cap of $${cap.toFixed(2)} (spent $${spent.toFixed(4)}). ` +
+      "Raise or remove the cap in Settings, or choose another model.",
+    409,
+  );
+}
+
 function append(record: JobRecord, text: string): void {
   const line = stripAnsi(text).trimEnd();
   if (line === "") return;
@@ -93,6 +180,7 @@ function publicSummary(record: JobRecord): JobSummary {
     sessionID: record.sessionID,
     error: record.error,
     command: record.command,
+    costMicros: record.costMicros,
   };
 }
 
@@ -110,48 +198,13 @@ function prune(): void {
 }
 
 /** OpenCode is installed by npm on Windows; spawn its exe rather than the .cmd shim. */
-function resolveOpencodeBinary(): string | null {
-  const override = process.env.SLATE_OPENCODE_BIN?.trim();
-  if (override !== undefined && override !== "") {
-    if (isAbsolute(override) && !existsSync(override)) return null;
-    return override;
-  }
-
-  if (process.platform !== "win32") return "opencode";
-
-  const candidates: string[] = [];
-  const appData = process.env.APPDATA;
-  if (appData !== undefined && appData !== "") {
-    candidates.push(join(appData, "npm", "node_modules", "@opencode", "cli", "bin", "opencode.exe"));
-  }
-  const localAppData = process.env.LOCALAPPDATA;
-  if (localAppData !== undefined && localAppData !== "") {
-    candidates.push(join(localAppData, "Programs", "opencode", "opencode.exe"));
-  }
-
-  // A global npm install also leaves opencode.cmd next to node_modules.
-  try {
-    const lines = execFileSync("where.exe", ["opencode"], {
-      encoding: "utf8",
-      windowsHide: true,
-    }).split(/\r?\n/);
-    for (const line of lines) {
-      const path = line.trim();
-      if (!path.toLowerCase().endsWith("opencode.cmd")) continue;
-      candidates.push(join(dirname(path), "node_modules", "@opencode", "cli", "bin", "opencode.exe"));
-    }
-  } catch {
-    // `where` missing or no global install; the candidates above are still worth checking.
-  }
-
-  for (const candidate of candidates) {
-    if (candidate !== "" && existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
 function quoteForDisplay(value: string): string {
   return /[\s"]/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
+}
+
+/** Stop a process tree the way job runs do (tests can replace the killer). */
+export function killProcessTree(child: ChildProcess | null): void {
+  killImpl(child);
 }
 
 function killTree(child: ChildProcess | null): void {
@@ -267,77 +320,45 @@ export interface StartJobInput {
   model?: string | null;
 }
 
-/** Start one opencode run in a project folder. One running job per project. */
-export function startJob(input: StartJobInput): JobSummary {
-  const project = input.project;
-  const folder = projectFolder(project);
-  if (folder === null || !existsSync(folder)) {
-    throw new JobError("project not found", 404);
-  }
-
-  const task = input.task.trim();
-  if (task === "") throw new JobError("a task description is required");
-  if (task.length > 8000) throw new JobError("the task is too long (8000 characters max)");
-  if (input.mode !== "plan" && input.mode !== "build") {
-    throw new JobError("mode must be plan or build");
-  }
-
-  const running = [...jobs.values()].find(
+function startNextQueued(project: string): void {
+  const running = [...jobs.values()].some(
     (entry) => entry.record.project === project && entry.record.status === "running",
   );
-  if (running !== undefined) {
-    throw new JobError("a task is already running for this project", 409);
+  if (running) return;
+  const next = [...jobs.values()]
+    .filter((entry) => entry.record.project === project && entry.record.status === "queued")
+    .sort((a, b) => a.record.createdAt.localeCompare(b.record.createdAt))[0];
+  if (next === undefined) return;
+  launchJob(next, true);
+}
+
+/**
+ * Fail jobs that claim to be running but have no process attached.
+ *
+ * A run whose child is gone (the server restarted, the process was killed elsewhere) would
+ * otherwise sit at "running" forever and block the queue behind it.
+ */
+export function reconcileJobs(): void {
+  for (const entry of jobs.values()) {
+    if (entry.record.status !== "running") continue;
+    if (entry.child !== null) continue;
+    entry.record.status = "failed";
+    entry.record.endedAt = new Date().toISOString();
+    entry.record.error = "the run was interrupted (the server restarted)";
+    append(entry.record, "\n— the run was interrupted; no process is attached to this job");
   }
+}
 
-  const binary = resolveOpencodeBinary();
-  if (binary === null) {
-    throw new JobError(
-      "opencode CLI not found. Install it, or set SLATE_OPENCODE_BIN to the executable.",
-      503,
-    );
-  }
+function launchJob(entry: JobEntry, fromQueue: boolean): void {
+  const { record } = entry;
+  // A job that already has a child process is running; do not launch it twice.
+  if (entry.child !== null) return;
+  if (record.status === "running") return;
 
-  const requested = input.model?.trim() ?? "";
-  const model = requested === "" ? DEFAULT_JOB_MODEL : requested;
-  if (model.length > 200) throw new JobError("the model name is too long");
-
-  const timestamp = new Date().toISOString().slice(0, 16).replace("T", " ");
-  const args = [
-    "run",
-    "--format",
-    "json",
-    "--archived",
-    "--title",
-    `Slate · ${project} · ${timestamp}`,
-    "--agent",
-    input.mode === "plan" ? "plan" : "build",
-    "--model",
-    model,
-  ];
-  args.push(task);
-
-  const now = new Date().toISOString();
-  const record: JobRecord = {
-    id: randomUUID(),
-    project,
-    task,
-    mode: input.mode,
-    model,
-    status: "running",
-    createdAt: now,
-    startedAt: now,
-    endedAt: null,
-    exitCode: null,
-    sessionID: null,
-    error: null,
-    command: [binary, ...args].map(quoteForDisplay).join(" "),
-    log: "",
-    stopReason: null,
-  };
-
-  const entry: JobEntry = { record, child: null, timer: null };
-  jobs.set(record.id, entry);
-  prune();
+  record.status = "running";
+  record.startedAt = new Date().toISOString();
+  record.stopReason = null;
+  append(record, fromQueue ? "— starting queued task" : "— starting task");
 
   let finished = false;
   const finish = (status: JobStatus, code: number | null, error: string | null): void => {
@@ -350,12 +371,14 @@ export function startJob(input: StartJobInput): JobSummary {
     if (entry.timer !== null) clearTimeout(entry.timer);
     entry.timer = null;
     entry.child = null;
+    // Advance the queue for this project.
+    startNextQueued(record.project);
   };
 
   let child: ChildProcess;
   try {
-    child = spawn(binary, args, {
-      cwd: folder,
+    child = spawnImpl(record.binary, record.args, {
+      cwd: record.folder,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
@@ -364,7 +387,7 @@ export function startJob(input: StartJobInput): JobSummary {
     const message = error instanceof Error ? error.message : String(error);
     append(record, `could not start opencode: ${message}`);
     finish("failed", null, message);
-    return publicSummary(record);
+    return;
   }
 
   entry.child = child;
@@ -380,6 +403,8 @@ export function startJob(input: StartJobInput): JobSummary {
           // Not every line has to be JSON; the formatter will keep raw text.
         }
       }
+      const micros = costMicrosFromEvent(line);
+      if (micros !== null) record.costMicros += micros;
       const readable = formatOpencodeEvent(line);
       if (readable !== null) append(record, readable);
     });
@@ -425,14 +450,101 @@ export function startJob(input: StartJobInput): JobSummary {
     record.stopReason = "timeout";
     record.error = `timed out after ${Math.round(timeoutMilliseconds() / 60000)} minutes`;
     append(record, `\n— ${record.error}; stopping opencode`);
-    killTree(entry.child);
+    killImpl(entry.child);
   }, timeoutMilliseconds());
   entry.timer.unref();
+}
 
+/** Start or queue an opencode run in a project folder. Server-side queue per project. */
+export function startJob(input: StartJobInput): JobSummary {
+  const project = input.project;
+  const folder = folderResolver(project);
+  if (folder === null || !existsSync(folder)) {
+    throw new JobError("project not found", 404);
+  }
+
+  const task = input.task.trim();
+  if (task === "") throw new JobError("a task description is required");
+  if (task.length > 8000) throw new JobError("the task is too long (8000 characters max)");
+  if (input.mode !== "plan" && input.mode !== "build") {
+    throw new JobError("mode must be plan or build");
+  }
+
+  const binary = binaryResolver();
+  if (binary === null) {
+    throw new JobError(
+      "opencode CLI not found. Install it, or set SLATE_OPENCODE_BIN to the executable.",
+      503,
+    );
+  }
+
+  const requested = input.model?.trim() ?? "";
+  const model = requested === "" ? DEFAULT_JOB_MODEL : requested;
+  if (model.length > 200) throw new JobError("the model name is too long");
+
+  enforceModelCap(model, readConfig());
+
+  const timestamp = new Date().toISOString().slice(0, 16).replace("T", " ");
+  const args = [
+    "run",
+    "--format",
+    "json",
+    "--archived",
+    "--title",
+    `Slate · ${project} · ${timestamp}`,
+    "--agent",
+    input.mode === "plan" ? "plan" : "build",
+    "--model",
+    model,
+  ];
+  args.push(task);
+
+  const now = new Date().toISOString();
+
+  // A job left "running" without a process would block the queue; clear those first.
+  reconcileJobs();
+
+  const hasRunning = [...jobs.values()].some(
+    (entry) => entry.record.project === project && entry.record.status === "running",
+  );
+
+  const record: JobRecord = {
+    id: randomUUID(),
+    project,
+    task,
+    mode: input.mode,
+    model,
+    // The record starts queued; launchJob is what moves it to running, so there is exactly one
+    // place that starts a process.
+    status: "queued",
+    createdAt: now,
+    startedAt: null,
+    endedAt: null,
+    exitCode: null,
+    sessionID: null,
+    error: null,
+    command: [binary, ...args].map(quoteForDisplay).join(" "),
+    costMicros: 0,
+    log: hasRunning ? "— queued (waiting for current task to finish)\n" : "",
+    stopReason: null,
+    folder,
+    args,
+    binary,
+  };
+
+  const entry: JobEntry = { record, child: null, timer: null };
+  jobs.set(record.id, entry);
+  prune();
+
+  if (!hasRunning) {
+    launchJob(entry, false);
+  }
   return publicSummary(record);
 }
 
 export function listJobs(project?: string): JobSummary[] {
+  // Clear any run that lost its process, so a stale job cannot block the queue.
+  reconcileJobs();
   const wanted = project === undefined ? null : project;
   return [...jobs.values()]
     .filter((entry) => wanted === null || entry.record.project === wanted)
@@ -448,9 +560,48 @@ export function getJob(id: string): JobDetail | null {
 export function cancelJob(id: string): JobSummary {
   const entry = jobs.get(id);
   if (entry === undefined) throw new JobError("job not found", 404);
+  if (entry.record.status === "queued") {
+    entry.record.status = "cancelled";
+    entry.record.endedAt = new Date().toISOString();
+    entry.record.stopReason = "cancelled";
+    append(entry.record, "\n— removed from queue");
+    return publicSummary(entry.record);
+  }
   if (entry.record.status !== "running") return publicSummary(entry.record);
+
   entry.record.stopReason = "cancelled";
   append(entry.record, "\n— cancellation requested");
-  killTree(entry.child);
+
+  // A run with no process attached cannot be killed; nothing would ever close it, so finish it here.
+  if (entry.child === null) {
+    entry.record.status = "cancelled";
+    entry.record.endedAt = new Date().toISOString();
+    append(entry.record, "\n— no process was running");
+    return publicSummary(entry.record);
+  }
+
+  killImpl(entry.child);
+
+  // Safety net: if the process refuses to die, the run must not stay "running" forever.
+  if (entry.timer !== null) clearTimeout(entry.timer);
+  entry.timer = setTimeout(() => {
+    if (entry.record.status !== "running") return;
+    entry.record.status = "cancelled";
+    entry.record.endedAt = new Date().toISOString();
+    append(entry.record, "\n— the process did not stop in time; the run was closed");
+    startNextQueued(entry.record.project);
+  }, 5000);
+  entry.timer.unref();
+
   return publicSummary(entry.record);
+}
+
+/** Remove a finished run from the history. Running and queued jobs must be stopped first. */
+export function deleteJob(id: string): void {
+  const entry = jobs.get(id);
+  if (entry === undefined) throw new JobError("job not found", 404);
+  if (entry.record.status === "running" || entry.record.status === "queued") {
+    throw new JobError("stop the run before deleting it", 409);
+  }
+  jobs.delete(id);
 }

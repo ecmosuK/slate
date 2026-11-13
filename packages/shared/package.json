@@ -8,6 +8,14 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./notes": {
+      "types": "./src/notes.ts",
+      "default": "./src/notes.ts"
+    },
+    "./port-detect": {
+      "types": "./src/port-detect.ts",
+      "default": "./src/port-detect.ts"
     }
   },
   "scripts": {

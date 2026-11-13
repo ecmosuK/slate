@@ -176,6 +176,97 @@
   border-top: 1px solid var(--line);
 }
 
+.sidebar .sidebar-heading {
+  padding: 0 8px 4px;
+}
+
+.workspace-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workspace-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workspace-row select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.workspace-row select:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.workspace-add {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.workspace-add:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.workspace-form {
+  display: flex;
+  gap: 6px;
+}
+
+.workspace-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.workspace-form button {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.workspace-error {
+  margin: 0;
+  padding: 0 8px;
+  color: #c25b5b;
+  font-size: 12px;
+}
+
+.sidebar-user {
+  overflow: hidden;
+  padding: 0 8px 6px;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 760px) {
   .app-shell {
     flex-direction: column;

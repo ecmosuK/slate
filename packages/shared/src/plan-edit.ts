@@ -85,6 +85,159 @@ export function addPlanTasks(
   return touch(next, at);
 }
 
+/**
+ * Where a task should land inside a section.
+ *
+ * `index` counts from the top of the section; `top` and `bottom` are shorthands. Tasks added at an
+ * index are inserted before the task that currently sits there.
+ */
+export type TaskPosition = number | "top" | "bottom";
+
+/** Append tasks to one section at a given position, skipping duplicates. */
+export function insertPlanTasks(
+  plan: Plan,
+  section: PlanSection,
+  tasks: string[],
+  position: TaskPosition,
+  at: Date = new Date(),
+): Plan {
+  const seen = new Set(plan[section].map((task) => task.text.toLowerCase()));
+  const additions: PlanTask[] = [];
+
+  for (const raw of tasks) {
+    const text = cleanTask(raw);
+    if (text === "") continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    additions.push({ text, done: section === "done" });
+  }
+
+  if (additions.length === 0) return plan;
+
+  const current = plan[section];
+  const index =
+    position === "top"
+      ? 0
+      : position === "bottom"
+        ? current.length
+        : Math.max(0, Math.min(Math.trunc(position), current.length));
+
+  const next = { ...plan };
+  next[section] = [...current.slice(0, index), ...additions, ...current.slice(index)];
+  return touch(next, at);
+}
+
+export interface MoveTaskTarget {
+  /** Move up or down one place, to the top, or to the bottom of the section. */
+  to?: "up" | "down" | "top" | "bottom";
+  /** Place the task before this one. */
+  before?: string;
+  /** Place the task after this one. */
+  after?: string;
+}
+
+/**
+ * Move one task inside a section.
+ *
+ * Matching favours an exact title, then a substring in either direction, so "wire media_kit"
+ * finds "Wire media_kit into the player service".
+ */
+export function movePlanTask(
+  plan: Plan,
+  section: PlanSection,
+  query: string,
+  target: MoveTaskTarget,
+  at: Date = new Date(),
+): { plan: Plan; task: PlanTask | null; moved: boolean } {
+  const tasks = plan[section];
+  const index = findTaskIndex(tasks, query);
+  if (index === -1) return { plan, task: null, moved: false };
+
+  const task = tasks[index];
+  if (task === undefined) return { plan, task: null, moved: false };
+
+  const rest = tasks.filter((_, position) => position !== index);
+
+  let insertAt = index;
+  if (target.to === "top") {
+    insertAt = 0;
+  } else if (target.to === "bottom") {
+    insertAt = rest.length;
+  } else if (target.to === "up") {
+    insertAt = Math.max(0, index - 1);
+  } else if (target.to === "down") {
+    insertAt = Math.min(rest.length, index + 1);
+  } else if (target.before !== undefined && target.before.trim() !== "") {
+    const anchor = findTaskIndex(rest, target.before);
+    insertAt = anchor === -1 ? rest.length : anchor;
+  } else if (target.after !== undefined && target.after.trim() !== "") {
+    const anchor = findTaskIndex(rest, target.after);
+    insertAt = anchor === -1 ? rest.length : anchor + 1;
+  } else {
+    return { plan, task, moved: false };
+  }
+
+  const next = [...rest.slice(0, insertAt), task, ...rest.slice(insertAt)];
+  return {
+    plan: touch({ ...plan, [section]: next }, at),
+    task,
+    moved: true,
+  };
+}
+
+/**
+ * Reorder a whole section from an explicit list of task titles.
+ *
+ * Titles are matched exactly first, then as fragments; tasks that are not named keep their
+ * relative order at the end of the section.
+ */
+export function reorderPlanTasks(
+  plan: Plan,
+  section: PlanSection,
+  order: string[],
+  at: Date = new Date(),
+): { plan: Plan; ordered: string[]; unmatched: string[] } {
+  const tasks = plan[section];
+  if (tasks.length === 0 || order.length === 0) {
+    return { plan, ordered: [], unmatched: order.map((text) => text.trim()).filter((t) => t !== "") };
+  }
+
+  const remaining = [...tasks];
+  const arranged: PlanTask[] = [];
+  const unmatched: string[] = [];
+
+  for (const raw of order) {
+    const wanted = cleanTask(raw);
+    if (wanted === "") continue;
+    const exact = remaining.findIndex(
+      (task) => task.text.toLowerCase() === wanted.toLowerCase(),
+    );
+    const index =
+      exact !== -1
+        ? exact
+        : remaining.findIndex((task) =>
+            task.text.toLowerCase().includes(wanted.toLowerCase()) ||
+            wanted.toLowerCase().includes(task.text.toLowerCase()),
+          );
+    if (index === -1) {
+      unmatched.push(wanted);
+      continue;
+    }
+    const [taken] = remaining.splice(index, 1);
+    if (taken !== undefined) arranged.push(taken);
+  }
+
+  const ordered = [...arranged, ...remaining];
+  const next = { ...plan };
+  next[section] = ordered;
+  return {
+    plan: touch(next, at),
+    ordered: ordered.map((task) => task.text),
+    unmatched,
+  };
+}
+
 function findTaskIndex(tasks: PlanTask[], query: string): number {
   const needle = cleanTask(query).toLowerCase();
   if (needle === "") return -1;
@@ -96,6 +249,31 @@ function findTaskIndex(tasks: PlanTask[], query: string): number {
   if (index !== -1) return index;
 
   return tasks.findIndex((task) => needle.includes(task.text.toLowerCase()));
+}
+
+/**
+ * Remove a task from a section entirely.
+ *
+ * Matching favours an exact title, then a substring in either direction, so "wire media_kit"
+ * finds "Wire media_kit into the player service".
+ */
+export function removePlanTask(
+  plan: Plan,
+  section: PlanSection,
+  query: string,
+  at: Date = new Date(),
+): CompleteTaskResult {
+  const index = findTaskIndex(plan[section], query);
+  if (index === -1) return { plan, task: null, from: null };
+
+  const task = plan[section][index];
+  if (task === undefined) return { plan, task: null, from: null };
+
+  const next = {
+    ...plan,
+    [section]: plan[section].filter((_, position) => position !== index),
+  };
+  return { plan: touch(next, at), task, from: section };
 }
 
 /**

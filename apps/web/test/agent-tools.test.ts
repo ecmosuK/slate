@@ -186,6 +186,118 @@ describe("goals", () => {
     const { outcome } = await call("update_goal", { project: slug, status: "done" });
     expect(outcome.ok).toBe(false);
   });
+
+  it("stores a priority and keeps the goal order", async () => {
+    const slug = await createDemo();
+
+    const first = await call("add_goal", {
+      project: slug,
+      title: "Ship the first version",
+      priority: "high",
+    });
+    const second = await call("add_goal", {
+      project: slug,
+      title: "Polish the copy",
+      priority: "low",
+    });
+    expect(first.outcome.ok).toBe(true);
+    expect(second.outcome.ok).toBe(true);
+
+    const goals = readGoals(join(root, slug));
+    expect(goals.map((goal) => goal.title)).toEqual([
+      "Ship the first version",
+      "Polish the copy",
+    ]);
+    expect(goals[0]?.priority).toBe("high");
+    expect(goals[1]?.priority).toBe("low");
+
+    const moved = await call("update_goal", {
+      project: slug,
+      match: "Polish",
+      move: "top",
+    });
+    expect(moved.outcome.ok).toBe(true);
+    expect(readGoals(join(root, slug)).map((goal) => goal.title)).toEqual([
+      "Polish the copy",
+      "Ship the first version",
+    ]);
+  });
+
+  it("reorders goals from an explicit list of ids", async () => {
+    const slug = await createDemo();
+    const first = await call("add_goal", { project: slug, title: "One" });
+    const second = await call("add_goal", { project: slug, title: "Two" });
+    const firstId = (first.data.goal as { id: string }).id;
+    const secondId = (second.data.goal as { id: string }).id;
+
+    const { outcome } = await call("reorder_goals", {
+      project: slug,
+      goals: [secondId, firstId],
+    });
+    expect(outcome.ok).toBe(true);
+    expect(readGoals(join(root, slug)).map((goal) => goal.title)).toEqual(["Two", "One"]);
+  });
+});
+
+describe("task ordering", () => {
+  it("adds tasks for a goal in priority order", async () => {
+    const slug = await createDemo();
+    const high = await call("add_goal", { project: slug, title: "Urgent", priority: "high" });
+    const low = await call("add_goal", { project: slug, title: "Later", priority: "low" });
+    const highId = (high.data.goal as { id: string }).id;
+    const lowId = (low.data.goal as { id: string }).id;
+
+    await call("add_tasks", {
+      project: slug,
+      section: "next",
+      tasks: ["Later task"],
+      goal: lowId,
+    });
+    await call("add_tasks", {
+      project: slug,
+      section: "next",
+      tasks: ["Urgent task"],
+      goal: highId,
+    });
+
+    const plan = planOf(slug);
+    expect(plan.next.map((task) => task.text)).toEqual(["Urgent task", "Later task"]);
+  });
+
+  it("reorders a section from an explicit list", async () => {
+    const slug = await createDemo();
+    await call("add_tasks", {
+      project: slug,
+      section: "next",
+      tasks: ["First", "Second"],
+    });
+
+    const { outcome } = await call("reorder_tasks", {
+      project: slug,
+      section: "next",
+      tasks: ["Second", "First"],
+    });
+    expect(outcome.ok).toBe(true);
+    expect(planOf(slug).next.map((task) => task.text)).toEqual(["Second", "First"]);
+  });
+
+  it("moves one task to the top", async () => {
+    const slug = await createDemo();
+    await call("add_tasks", {
+      project: slug,
+      section: "next",
+      tasks: ["First", "Second"],
+    });
+
+    const { outcome } = await call("move_task", {
+      project: slug,
+      section: "next",
+      task: "Second",
+      to: "top",
+    });
+    expect(outcome.ok).toBe(true);
+    expect(planOf(slug).next.map((task) => task.text)).toEqual(["Second", "First"]);
+  });
 });
 
 describe("listing", () => {

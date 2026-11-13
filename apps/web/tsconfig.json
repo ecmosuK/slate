@@ -18,8 +18,14 @@
       "@slate/shared": [
         "../../packages/shared/src/index.ts"
       ],
+      "@slate/shared/*": [
+        "../../packages/shared/src/*"
+      ],
       "@slate/db": [
         "../../packages/db/src/index.ts"
+      ],
+      "@slate/bridge": [
+        "../../packages/bridge/src/index.ts"
       ]
     },
     "allowJs": true,

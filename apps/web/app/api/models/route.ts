@@ -1,23 +1,30 @@
 import { NextResponse } from "next/server";
 
-import { complete, openRouterKey, readConfig } from "@slate/shared";
+import { capForModel, complete, geminiKey, openRouterKey, readConfig } from "@slate/shared";
 
-import { listFreeModels } from "@/lib/free-models";
+import { cachedListModels } from "@/lib/free-models";
+import { modelUnavailabilityOf } from "@/lib/agent-session";
+import { DEFAULT_CHAT_MODEL } from "@/lib/model-defaults";
+import { capRemainingDollars, formatDollars } from "@/lib/spend";
+import { geminiChat } from "@/lib/gemini-chat";
+import { completeWithOpencode } from "@/lib/opencode-chat";
+import { guardWrite } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-let cache: { models: Awaited<ReturnType<typeof listFreeModels>>; at: number } | null = null;
-const CACHE_MS = 10 * 60 * 1000;
-
-/** Free model catalogue: OpenRouter free models and opencode's free models. */
+/** Free model catalogue: OpenRouter, Gemini, and opencode's free models. */
 export async function GET() {
-  if (cache !== null && Date.now() - cache.at < CACHE_MS) {
-    return NextResponse.json({ ok: true, models: cache.models, cached: true, freeOnly: true });
-  }
   try {
-    const models = await listFreeModels();
-    cache = { models, at: Date.now() };
-    return NextResponse.json({ ok: true, models, cached: false, freeOnly: true });
+    const models = await cachedListModels();
+    const enriched = models.map((model) => {
+      const unavailable = modelUnavailabilityOf(model.id);
+      return {
+        ...model,
+        unavailableUntil: unavailable === null ? null : unavailable.until,
+        unavailableReason: unavailable === null ? null : unavailable.reason,
+      };
+    });
+    return NextResponse.json({ ok: true, models: enriched, freeOnly: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "the model list could not be fetched";
     return NextResponse.json({ ok: false, error: message }, { status: 502 });
@@ -26,6 +33,9 @@ export async function GET() {
 
 /** Send one small message, to check the key and the model. */
 export async function POST(request: Request) {
+  const denied = await guardWrite();
+  if (denied !== null) return denied;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -38,14 +48,39 @@ export async function POST(request: Request) {
   const model =
     typeof payload.model === "string" && payload.model !== ""
       ? payload.model
-      : (config.openrouter.defaultModel ?? "");
+      : (config.openrouter.defaultModel ?? DEFAULT_CHAT_MODEL);
   const prompt =
     typeof payload.prompt === "string" && payload.prompt.trim() !== ""
       ? payload.prompt.trim()
       : "Reply with the single word: connected.";
 
-  if (model === "") {
-    return NextResponse.json({ ok: false, error: "choose a model first" }, { status: 400 });
+  const remaining = capRemainingDollars(config, model);
+  if (remaining !== null && remaining <= 0) {
+    const cap = capForModel(config, model) ?? 0;
+    const spent = cap - remaining;
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `spend cap reached for ${model}: $${formatDollars(spent * 1_000_000)} of $${formatDollars(cap * 1_000_000)} spent`,
+      },
+      { status: 402 },
+    );
+  }
+
+  if (model.startsWith("opencode/")) {
+    const result = await completeWithOpencode(model, "You are a helpful assistant.", [
+      { role: "user", content: prompt },
+    ]);
+    return NextResponse.json(result, { status: result.ok ? 200 : 502 });
+  }
+
+  if (model.startsWith("gemini/")) {
+    const key = geminiKey(config);
+    if (key === null) {
+      return NextResponse.json({ ok: false, error: "no Gemini API key is set" }, { status: 400 });
+    }
+    const result = await geminiChat(key, model, [{ role: "user", content: prompt }]);
+    return NextResponse.json(result, { status: result.ok ? 200 : 502 });
   }
 
   const key = openRouterKey(config);

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import WorkspaceSwitcher, { type SwitcherWorkspace } from "./WorkspaceSwitcher";
+
 export interface SidebarProject {
   slug: string;
   title: string | null;
@@ -12,6 +14,9 @@ export interface SidebarProject {
 
 interface SidebarProps {
   projects: SidebarProject[];
+  workspaces: SwitcherWorkspace[];
+  activeWorkspaceId: string | null;
+  user: { name: string; email: string };
 }
 
 function isActive(pathname: string, href: string): boolean {
@@ -19,7 +24,12 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export default function Sidebar({ projects }: SidebarProps) {
+export default function Sidebar({
+  projects,
+  workspaces,
+  activeWorkspaceId,
+  user,
+}: SidebarProps) {
   const pathname = usePathname() ?? "/";
   const activeSlug = pathname.startsWith("/projects/")
     ? decodeURIComponent(pathname.slice("/projects/".length))
@@ -53,6 +63,8 @@ export default function Sidebar({ projects }: SidebarProps) {
         </Link>
       </div>
 
+      <WorkspaceSwitcher workspaces={workspaces} activeId={activeWorkspaceId} />
+
       <nav className="sidebar-nav" aria-label="Main">
         <Link className={isActive(pathname, "/chat") ? "sidebar-link active" : "sidebar-link"} href="/chat">
           Agent
@@ -62,6 +74,12 @@ export default function Sidebar({ projects }: SidebarProps) {
           href="/calendar"
         >
           Calendar
+        </Link>
+        <Link
+          className={isActive(pathname, "/notes") ? "sidebar-link active" : "sidebar-link"}
+          href="/notes"
+        >
+          Notes
         </Link>
       </nav>
 
@@ -98,6 +116,9 @@ export default function Sidebar({ projects }: SidebarProps) {
       </div>
 
       <div className="sidebar-footer">
+        <div className="sidebar-user" title={user.email}>
+          {user.name}
+        </div>
         <Link
           className={isActive(pathname, "/settings") ? "sidebar-link active" : "sidebar-link"}
           href="/settings"

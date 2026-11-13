@@ -1,0 +1,20 @@
+{
+  "name": "@slate/agent-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The tool implementations the Slate agent can call: projects, plans and goals. Shared by the web chat loop and the opencode MCP server.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./goals": {
+      "types": "./src/goals.ts",
+      "default": "./src/goals.ts"
+    }
+  },
+  "dependencies": {
+    "@slate/shared": "*"
+  }
+}

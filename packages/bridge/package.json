@@ -1,0 +1,17 @@
+{
+  "name": "@slate/bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Folder watcher, atomic README writer, git facts and the terminal process runner for the Slate bridge.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@slate/shared": "*",
+    "node-pty": "^1.1.0"
+  }
+}
